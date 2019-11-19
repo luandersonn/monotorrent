@@ -64,7 +64,7 @@ namespace MonoTorrent.Client
         /// <summary>
         /// The TCP port the engine should listen on for incoming connections. Defaults to 52138.
         /// </summary>
-        public int ListenPort {
+        public virtual int ListenPort {
             get => listenPort;
             set => listenPort = CheckPort (value);
         }
@@ -72,7 +72,7 @@ namespace MonoTorrent.Client
         /// <summary>
         /// The maximum number of concurrent open connections overall. Defaults to 150.
         /// </summary>
-        public int MaximumConnections {
+        public virtual int MaximumConnections {
             get => maximumConnections;
             set => maximumConnections = CheckZeroOrPositive (value);
         }
@@ -80,7 +80,7 @@ namespace MonoTorrent.Client
         /// <summary>
         /// The maximum download speed, in bytes per second, overall. A value of 0 means unlimited. Defaults to 0.
         /// </summary>
-        public int MaximumDownloadSpeed {
+        public virtual int MaximumDownloadSpeed {
             get => maximumDownloadSpeed;
             set => maximumDownloadSpeed = CheckZeroOrPositive (value);
         }
@@ -88,7 +88,7 @@ namespace MonoTorrent.Client
         /// <summary>
         /// The maximum number of concurrent connection attempts overall. Defaults to 8.
         /// </summary>
-        public int MaximumHalfOpenConnections {
+        public virtual int MaximumHalfOpenConnections {
             get => maximumHalfOpenConnections;
             set => maximumHalfOpenConnections = CheckZeroOrPositive (value);
         }
@@ -96,7 +96,7 @@ namespace MonoTorrent.Client
         /// <summary>
         /// The maximum upload speed, in bytes per second, overall. A value of 0 means unlimited. defaults to 0.
         /// </summary>
-        public int MaximumUploadSpeed {
+        public virtual int MaximumUploadSpeed {
             get => maximumUploadSpeed;
             set => maximumUploadSpeed = CheckZeroOrPositive (value);
         }
@@ -106,7 +106,7 @@ namespace MonoTorrent.Client
         /// filehandles for a process it can be beneficial to limit the number of open files to prevent
         /// running out of resources. A value of 0 means unlimited, but this is not recommended. Defaults to 20.
         /// </summary>
-        public int MaximumOpenFiles {
+        public virtual int MaximumOpenFiles {
             get => maximumOpenFiles;
             set => maximumOpenFiles = CheckZeroOrPositive (20);
         }
@@ -116,7 +116,7 @@ namespace MonoTorrent.Client
         /// typically only useful for non-SSD drives to prevent the hashing process from saturating
         /// the available drive bandwidth. Defaults to 0.
         /// </summary>
-        public int MaximumDiskReadRate {
+        public virtual int MaximumDiskReadRate {
             get => maximumDiskReadRate;
             set => maximumDiskReadRate = CheckZeroOrPositive (value);
         }
@@ -127,7 +127,7 @@ namespace MonoTorrent.Client
         /// the available drive bandwidth. If the download speed exceeds the max write rate then the
         /// download will be throttled. Defaults to 0.
         /// </summary>
-        public int MaximumDiskWriteRate {
+        public virtual int MaximumDiskWriteRate {
             get => maximumDiskWriteRate;
             set => maximumDiskWriteRate = CheckZeroOrPositive (value);
         }
@@ -145,13 +145,13 @@ namespace MonoTorrent.Client
         /// allows <see cref="EncryptionTypes.RC4Full"/> or <see cref="EncryptionTypes.RC4Header"/> then an encrypted connection
         /// will be used by default for new outgoing connections. Defaults to <see langword="true" />.
         /// </summary>
-        public bool PreferEncryption { get; set; } = true;
+        public virtual bool PreferEncryption { get; set; } = true;
 
         /// <summary>
         /// This is the path where the .torrent metadata will be saved when magnet links are used to start a download.
         /// Defaults to <see langword="null" />
         /// </summary>
-        public string SavePath { get; set; } = null;
+        public virtual string SavePath { get; set; } = null;
 
         object ICloneable.Clone()
             => Clone();

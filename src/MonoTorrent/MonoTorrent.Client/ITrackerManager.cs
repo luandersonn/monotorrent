@@ -49,6 +49,8 @@ namespace MonoTorrent.Client.Tracker
         /// </summary>
         bool LastAnnounceSucceeded { get; }
 
+        bool ChangeCurrentTracker(ITracker tracker);
+
         /// <summary>
         /// The time, in UTC, when the most recent Announce request was sent
         /// </summary>
@@ -100,5 +102,9 @@ namespace MonoTorrent.Client.Tracker
         /// <param name="tracker">The tracker to query</param>
         /// <returns></returns>
         Task Scrape(ITracker tracker);
+
+        IList<ITracker> Trackers { get; }
+
+        DateTime? NextUpdate { get;  }
     }
 }

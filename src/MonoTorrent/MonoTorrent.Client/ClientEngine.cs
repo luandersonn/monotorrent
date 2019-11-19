@@ -74,6 +74,9 @@ namespace MonoTorrent.Client
         public event EventHandler<StatsUpdateEventArgs> StatsUpdate;
         public event EventHandler<CriticalExceptionEventArgs> CriticalException;
 
+        public event EventHandler<TorrentEventArgs> TorrentRegistered;
+        public event EventHandler<TorrentEventArgs> TorrentUnregistered;
+
         #endregion
 
 
@@ -315,6 +318,8 @@ namespace MonoTorrent.Client
                     // FIXME: Should log this somewhere, though it's not critical
                 }
             }
+
+            TorrentRegistered?.Invoke(this, new TorrentRegisteredEventArgs(manager));
         }
 
         public async Task RegisterDhtAsync(IDhtEngine engine)
@@ -431,6 +436,7 @@ namespace MonoTorrent.Client
             manager.Engine = null;
             manager.DownloadLimiters.Remove(downloadLimiters);
             manager.UploadLimiters.Remove(uploadLimiters);
+            TorrentUnregistered?.Invoke(this, new TorrentRegisteredEventArgs(manager));
         }
 
         #endregion

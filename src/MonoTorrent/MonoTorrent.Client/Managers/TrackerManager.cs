@@ -75,10 +75,34 @@ namespace MonoTorrent.Client.Tracker
         /// </summary>
         public IList<TrackerTier> Tiers { get; }
 
+        public IList<ITracker> Trackers { get; private set; }
+
         /// <summary>
         /// The amount of time since the most recent Announce request was issued.
         /// </summary>
         public TimeSpan TimeSinceLastAnnounce => LastAnnounce.IsRunning ? LastAnnounce.Elapsed : TimeSpan.MaxValue;
+
+        public DateTime? NextUpdate
+        {
+            get
+            {
+                if (CurrentTracker == null)
+                {
+                    return null;
+                }
+
+                if (LastAnnounceSucceeded)
+                {
+                    // If the last connection succeeded, then update at the regular interval
+                    return LastUpdated.Add(CurrentTracker.UpdateInterval);
+                }
+                else
+                {
+                    // Otherwise update at the min interval
+                    return LastUpdated.Add(CurrentTracker.MinUpdateInterval);
+                }
+            }
+        }
 
         #endregion
 
@@ -97,10 +121,17 @@ namespace MonoTorrent.Client.Tracker
 
             // Check if this tracker supports scraping
             var trackerTiers = new List<TrackerTier> ();
+            List<ITracker> trackers = new List<ITracker>();
             foreach (var tier in announces)
-                trackerTiers.Add (new TrackerTier (tier));
+            {
+                TrackerTier trackerTier = new TrackerTier(tier);
+                trackerTiers.Add(trackerTier);
+                trackers.AddRange(trackerTier.Trackers);
+            }
+                
             trackerTiers.RemoveAll (tier => tier.Trackers.Count == 0);
             Tiers = trackerTiers.AsReadOnly ();
+            Trackers = trackers;
         }
 
         #endregion
@@ -180,6 +211,28 @@ namespace MonoTorrent.Client.Tracker
                     if (referenceTracker == null || referenceTracker == tracker)
                         yield return Tuple.Create (tier, tracker);
         }
+
+        public bool ChangeCurrentTracker(ITracker tracker)
+        {
+            if (CurrentTracker == tracker)
+            {
+                return true;
+            }
+
+            // TODO(alekseyv): fix this
+
+            // Ignoring fact that announce can be in progress.
+            //var waitHandle = Announce(TorrentEvent.Stopped);
+            //if (waitHandle.WaitOne(5000))
+            //{
+            //    CurrentTracker = tracker;
+            //    var waitHandle2 = Announce(TorrentEvent.Started);
+            //    return waitHandle.WaitOne(5000);
+            //}
+
+            return false;
+        }
+
 
         #endregion
     }

@@ -31,6 +31,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
+using System.Linq;
 
 using MonoTorrent.Client.Messages.Standard;
 using MonoTorrent.Client.Modes;
@@ -100,6 +101,7 @@ namespace MonoTorrent.Client
         private string torrentSave;             // The path where the .torrent data will be saved when in metadata mode
         internal IUnchoker chokeUnchoker; // Used to choke and unchoke peers
         internal DateTime lastCalledInactivePeerManager = DateTime.Now;
+        private MagnetLink magnetLink;
         #endregion Member Variables
 
 
@@ -289,6 +291,79 @@ namespace MonoTorrent.Client
 
         public InfoHash InfoHash { get; }
 
+        /// <summary>
+        /// If TorrentState is Stopped and this value is not null it means that torrent is queued.
+        /// The higher the value, the lower download priority is.
+        /// Used only in GUI.
+        /// TODO(alekseyv): move it out
+        /// </summary>
+        public int? QueuedPriority
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// Indicates that torrent should switch to stopped mode once download is complete.
+        /// Used only in GUI.
+        /// </summary>
+        /// TODO(alekseyv): move it out
+        public bool StopOnComplete
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// Torrent tracker announce Urls
+        /// </summary>
+        public IList<RawTrackerTier> AnnounceUrls
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// Torrent name
+        /// </summary>
+        public string Name
+        {
+            get
+            {
+                if (this.Torrent != null)
+                {
+                    return this.Torrent.Name;
+                }
+
+                if (this.magnetLink != null)
+                {
+                    return this.magnetLink.Name;
+                }
+
+                return null;
+            }
+        }
+
+        //for HACK to prevent Torrent class from randomizing announce urls on load
+        public MagnetLink MagnetLink
+        {
+            get
+            {
+                if (this.magnetLink == null)
+                {
+                    this.magnetLink = new MagnetLink(Torrent.InfoHash, name: Name, 
+                        announceUrls: AnnounceUrls != null ? AnnounceUrls.SelectMany(rawTrackerTier => rawTrackerTier).ToList() : new List<string>());
+                }
+                return this.magnetLink;
+            }
+        }
+
+        public int DhtPeersCount
+        {
+            get;
+            private set;
+        }
+
         #endregion
 
         #region Constructors
@@ -368,6 +443,7 @@ namespace MonoTorrent.Client
 
         void Initialise(string savePath, string baseDirectory, IList<RawTrackerTier> announces)
         {
+            this.AnnounceUrls = announces;
             this.Bitfield = new BitField(HasMetadata ? Torrent.Pieces.Count : 1);
             this.PartialProgressSelector = new BitField(HasMetadata ? Torrent.Pieces.Count : 1);
             this.UnhashedPieces = new BitField(HasMetadata ? Torrent.Pieces.Count : 1).SetAll (true);
@@ -724,6 +800,12 @@ namespace MonoTorrent.Client
 
         internal void RaisePeersFound(PeersAddedEventArgs args)
         {
+            DhtPeersAdded dhtPeersAdded = args as DhtPeersAdded;
+            if (dhtPeersAdded != null)
+            {
+                // This doesn't account for peer disconnection, but should be good enough.
+                DhtPeersCount += dhtPeersAdded.NewPeers;
+            }
             PeersFound?.InvokeAsync (this, args);
         }
 

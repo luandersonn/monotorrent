@@ -1,10 +1,10 @@
 //
-// IDhtEngine.cs
+// PeersAddedEventArgs.cs
 //
 // Authors:
 //   Alan McGovern alan.mcgovern@gmail.com
 //
-// Copyright (C) 2009 Alan McGovern
+// Copyright (C) 2006 Alan McGovern
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -27,26 +27,22 @@
 //
 
 
-using System;
-using System.Threading.Tasks;
-using MonoTorrent.BEncoding;
-
-namespace MonoTorrent.Dht
+namespace MonoTorrent.Client
 {
-    public interface IDhtEngine : IDisposable
+    /// <summary>
+    /// Provides the data needed to handle a PeersAdded event
+    /// </summary>
+    public class TorrentRegisteredEventArgs : TorrentEventArgs
     {
-        event EventHandler<PeersFoundEventArgs> PeersFound;
-        event EventHandler StateChanged;
-
-        bool Disposed { get; }
-        DhtState State { get; }
-        int NodesCount { get; }
-        void Add(BEncodedList nodes);
-        void Announce(InfoHash infohash, int port);
-        void GetPeers(InfoHash infohash);
-        Task<byte[]> SaveNodesAsync();
-        Task StartAsync();
-        Task StartAsync(byte[] initialNodes);
-        Task StopAsync();
+        #region Constructors
+        /// <summary>
+        /// Creates a new TorrentRegisteredEventArgs
+        /// </summary>
+        /// <param name="manager">The <see cref="TorrentManager"/> which the peer was added to.</param>
+        public TorrentRegisteredEventArgs(TorrentManager manager)
+            : base(manager)
+        {
+        }
+        #endregion
     }
 }
