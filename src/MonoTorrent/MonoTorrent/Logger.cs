@@ -78,6 +78,11 @@ namespace MonoTorrent
                     listeners[i].WriteLine(p);
         }*/
 
+        public static void Fatal(string message)
+        {
+            Log(null, message);
+        }
+
         [Conditional("DO_NOT_ENABLE")]
         public static void Log(IConnection connection, string message)
         {

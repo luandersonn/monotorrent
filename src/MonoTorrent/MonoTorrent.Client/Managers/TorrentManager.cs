@@ -485,7 +485,7 @@ namespace MonoTorrent.Client
 
         #region Public Methods
 
-        internal void ChangePicker(PiecePicker picker)
+        public void ChangePicker(PiecePicker picker)
         {
             Check.Picker(picker);
             PieceManager.ChangePicker(new IgnoringPicker (UnhashedPieces, picker), Bitfield, Torrent);
@@ -736,6 +736,7 @@ namespace MonoTorrent.Client
         #endregion
 
 
+        
         #region Internal Methods
 
         public async Task<bool> AddPeerAsync(Peer peer)
@@ -865,18 +866,31 @@ namespace MonoTorrent.Client
                 throw new InvalidOperationException("The registered engine has been disposed");
         }
 
+        internal PiecePicker CreateBasePicker()
+        {
+            if (ClientEngine.SupportsEndgameMode)
+                return new EndGameSwitcher(new StandardPicker(), new EndGamePicker(), Torrent.PieceLength / Piece.BlockSize, this);
+            else
+                return new StandardPicker();
+        }
+
         internal PiecePicker CreateStandardPicker()
         {
-            PiecePicker picker;
-            if (ClientEngine.SupportsEndgameMode)
-                picker = new EndGameSwitcher(new StandardPicker(), new EndGamePicker(), Torrent.PieceLength / Piece.BlockSize, this);
-            else
-                picker = new StandardPicker();
+            PiecePicker picker = CreateBasePicker();
             picker = new RandomisedPicker(picker);
             picker = new RarestFirstPicker(picker);
             picker = new PriorityPicker(picker);
-
             return picker;
+        }
+
+        public SlidingWindowPicker CreateSlidingWindowPicker(int streamStart, int size)
+        {
+            SlidingWindowPicker slidingWindowPicker = new SlidingWindowPicker(new PriorityPicker(this.CreateBasePicker()))
+            {
+                HighPrioritySetStart = streamStart,
+                HighPrioritySetSize = size
+            };
+            return slidingWindowPicker;
         }
 
         public void LoadFastResume(FastResume data)

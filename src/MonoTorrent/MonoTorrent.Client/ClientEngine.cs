@@ -91,6 +91,7 @@ namespace MonoTorrent.Client
         private RateLimiterGroup uploadLimiters;
         private RateLimiter downloadLimiter;
         private RateLimiterGroup downloadLimiters;
+        private IPieceWriter writer;
 
         #endregion
 
@@ -169,6 +170,7 @@ namespace MonoTorrent.Client
             Check.Listener(listener);
             Check.Writer(writer);
 
+            this.writer = writer;
             PeerId = GeneratePeerId();
             Listener = listener ?? throw new ArgumentNullException (nameof (listener));
             Settings = settings ?? throw new ArgumentNullException (nameof (settings));
@@ -437,6 +439,20 @@ namespace MonoTorrent.Client
             manager.DownloadLimiters.Remove(downloadLimiters);
             manager.UploadLimiters.Remove(uploadLimiters);
             TorrentUnregistered?.Invoke(this, new TorrentRegisteredEventArgs(manager));
+        }
+
+        public void FlushAll()
+        {
+            foreach (TorrentManager manager in this.Torrents)
+            {
+                if (manager.Torrent != null)
+                {
+                    foreach (var file in manager.Torrent.Files)
+                    {
+                        writer.Flush(file);
+                    }
+                }
+            }
         }
 
         #endregion

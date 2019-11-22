@@ -313,7 +313,7 @@ namespace MonoTorrent.Client
             }
         }
 
-        internal async ReusableTask<bool> ReadAsync (ITorrentData manager, long offset, byte [] buffer, int count)
+        public async ReusableTask<bool> ReadAsync (ITorrentData manager, long offset, byte [] buffer, int count)
         {
             Interlocked.Add (ref pendingReads, count);
             await IOLoop;

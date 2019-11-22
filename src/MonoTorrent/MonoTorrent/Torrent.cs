@@ -35,6 +35,7 @@ using System.Security.Cryptography;
 using System.Text;
 
 using MonoTorrent.BEncoding;
+using System.Linq;
 
 namespace MonoTorrent
 {
@@ -333,6 +334,11 @@ namespace MonoTorrent
         {
             // Give the user a copy of the original dictionary.
             return BEncodedValue.Clone (originalDictionary);
+        }
+
+        public MagnetLink ToMagnetLink()
+        {
+            return new MagnetLink(this.InfoHash, name: this.Name, announceUrls: this.AnnounceUrls.SelectMany(tier => tier).ToList());
         }
 
         public override string ToString()
@@ -859,7 +865,9 @@ namespace MonoTorrent
                                     for (int k = 0; k < bencodedTier.Count; k++)
                                         tier.Add(bencodedTier[k].ToString());
 
-                                    Toolbox.Randomize<string>(tier);
+                                    // TODO(alekseyv): do we need this?
+                                    // removed it instead of using PreserveAnnounceUrlsOrder Hack
+                                    //Toolbox.Randomize<string>(tier);
 
                                     RawTrackerTier collection = new RawTrackerTier ();
                                     for (int k = 0; k < tier.Count; k++)
