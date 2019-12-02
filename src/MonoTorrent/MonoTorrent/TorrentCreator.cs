@@ -202,7 +202,7 @@ namespace MonoTorrent
 
                     while (fileRead < file.Length) {
                         int toRead = (int) Math.Min (buffer.Length - bufferRead, file.Length - fileRead);
-                        int read = writer.Read(file, fileRead, buffer, bufferRead, toRead);
+                        int read = writer.ReadAsync(file, fileRead, buffer, bufferRead, toRead);
                         token.ThrowIfCancellationRequested ();
 
                         md5Hasher?.TransformBlock (buffer, bufferRead, read, buffer, bufferRead);

@@ -30,6 +30,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace MonoTorrent.Client
 {
@@ -77,7 +78,7 @@ namespace MonoTorrent.Client
             return null;
         }
 
-        internal TorrentFileStream GetStream(TorrentFile file, FileAccess access)
+        internal async Task<TorrentFileStream> GetStreamAsync(TorrentFile file, FileAccess access)
         {
             TorrentFileStream s = FindStream(file.FullPath);
 

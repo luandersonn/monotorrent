@@ -89,6 +89,9 @@ Notable features include:
       <Copyright>Alan McGovern, Gregor Burger</Copyright>
     </PropertyGroup>
   </Target>
+  <ItemGroup>
+    <Compile Remove="MonoTorrent\TorrentCreator.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="GitInfo" Version="2.0.20" PrivateAssets="all" />

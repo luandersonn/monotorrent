@@ -189,8 +189,8 @@ namespace MonoTorrent.Client
             if (Disposed)
                 return;
 
-            IOLoop.QueueWait (() => {
-                ProcessBufferedIO (true);
+            IOLoop.QueueWait (async () => {
+                await ProcessBufferedIOAsync (true);
                 Writer.Dispose ();
                 Disposed = true;
             });
@@ -288,7 +288,7 @@ namespace MonoTorrent.Client
             await IOLoop;
 
             // Process all pending reads/writes then close any open streams
-            ProcessBufferedIO(true);
+            await ProcessBufferedIOAsync(true);
             foreach (var file in manager.Files)
                 Writer.Close (file);
         }
@@ -321,7 +321,7 @@ namespace MonoTorrent.Client
             if (ReadLimiter.TryProcess(count))
             {
                 Interlocked.Add (ref pendingReads, -count);
-                return Read(manager, offset, buffer, count);
+                return await Read(manager, offset, buffer, count);
             }
             else
             {
@@ -375,11 +375,6 @@ namespace MonoTorrent.Client
         async Task ProcessBufferedIOAsync (bool force = false)
         {
             await IOLoop;
-            ProcessBufferedIO (force);
-        }
-
-        void ProcessBufferedIO (bool force = false)
-        {
             BufferedIO io;
 
             while (WriteQueue.Count > 0) {
@@ -414,7 +409,7 @@ namespace MonoTorrent.Client
 
                 try {
                     Interlocked.Add (ref pendingReads, -io.count);
-                    var result = Read (io.manager, io.offset, io.buffer, io.count);
+                    var result = await Read (io.manager, io.offset, io.buffer, io.count);
                     io.tcs.SetResult (result);
                 } catch (Exception ex) {
                     io.tcs.SetException (ex);
@@ -422,7 +417,7 @@ namespace MonoTorrent.Client
             }
         }
 
-        bool Read (ITorrentData manager, long offset, byte [] buffer, int count)
+        async Task<bool> Read (ITorrentData manager, long offset, byte [] buffer, int count)
         {
             ReadMonitor.AddDelta (count);
 
@@ -446,7 +441,7 @@ namespace MonoTorrent.Client
                 int fileToRead = (int)Math.Min(files[i].Length - offset, count - totalRead);
                 fileToRead = Math.Min(fileToRead, Piece.BlockSize);
 
-                if (fileToRead != Writer.Read(files[i], offset, buffer, totalRead, fileToRead))
+                if (fileToRead != await Writer.ReadAsync(files[i], offset, buffer, totalRead, fileToRead))
                     return false;
 
                 offset += fileToRead;
@@ -522,7 +517,7 @@ namespace MonoTorrent.Client
                 int fileToWrite = (int)Math.Min(files[i].Length - offset, count - totalWritten);
                 fileToWrite = Math.Min(fileToWrite, Piece.BlockSize);
 
-                Writer.Write(files[i], offset, buffer, totalWritten, fileToWrite);
+                Writer.WriteAsync(files[i], offset, buffer, totalWritten, fileToWrite);
 
                 offset += fileToWrite;
                 totalWritten += fileToWrite;

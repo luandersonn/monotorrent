@@ -441,18 +441,20 @@ namespace MonoTorrent.Client
             TorrentUnregistered?.Invoke(this, new TorrentRegisteredEventArgs(manager));
         }
 
-        public void FlushAll()
+        public async Task FlushAllAsync()
         {
-            foreach (TorrentManager manager in this.Torrents)
-            {
-                if (manager.Torrent != null)
-                {
-                    foreach (var file in manager.Torrent.Files)
-                    {
-                        writer.Flush(file);
-                    }
-                }
-            }
+            var tasks = this.Torrents.Where(manager => manager.Torrent != null).SelectMany(manager => manager.Torrent.Files).Select(file => writer.FlushAsync(file));
+            await Task.WhenAll(tasks);
+            //foreach (TorrentManager manager in this.Torrents)
+            //{
+            //    if (manager.Torrent != null)
+            //    {
+            //        foreach (var file in manager.Torrent.Files)
+            //        {
+            //            await writer.FlushAsync(file);
+            //        }
+            //    }
+            //}
         }
 
         #endregion

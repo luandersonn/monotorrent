@@ -111,7 +111,7 @@ namespace MonoTorrent.Client
             Send(t => action (), null);
         }
 
-        public object QueueWait(Func<object> func)
+        public object QueueWait(Func<object> func) // alekseyv: probably I could have used this method for synchrounous calls
         {
             object result = null;
             Send(t => result = func(), null);
