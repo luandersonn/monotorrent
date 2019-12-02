@@ -99,8 +99,4 @@ Notable features include:
     <Content Include="..\..\LICENSE.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\..\torrentrt\MonoTorrent.Common\MonoTorrent.Common.csproj" />
-  </ItemGroup>
-
 </Project>

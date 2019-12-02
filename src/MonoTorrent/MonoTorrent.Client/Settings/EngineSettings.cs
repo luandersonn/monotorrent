@@ -29,6 +29,7 @@
 
 using System;
 using System.Net;
+using System.Runtime.Serialization;
 
 namespace MonoTorrent.Client
 {
@@ -46,6 +47,8 @@ namespace MonoTorrent.Client
         int maximumHalfOpenConnections = 8;
         int maximumOpenFiles = 20;
         int maximumUploadSpeed;
+        [NonSerialized]
+        IPEndPoint reportedAddress;
 
         /// <summary>
         /// A flags enum representing which encryption methods are allowed. Defaults to <see cref="EncryptionTypes.All"/>.
@@ -137,7 +140,11 @@ namespace MonoTorrent.Client
         /// Announce or Scrape requests are sent from, specify it here. Typically this should not be set.
         /// Defaults to <see langword="null" />
         /// </summary>
-        public IPEndPoint ReportedAddress { get; set; } = null;
+        [IgnoreDataMember]
+        public IPEndPoint ReportedAddress {
+            get => reportedAddress;
+            set => reportedAddress = value;
+        }
 
         /// <summary>
         /// If this is set to false and <see cref="AllowedEncryption"/> allows <see cref="EncryptionTypes.PlainText"/>, then

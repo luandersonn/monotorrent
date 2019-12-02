@@ -27,11 +27,12 @@
 //
 
 
+using Microsoft.Win32.SafeHandles;
 using System.IO;
 
 namespace MonoTorrent.Client
 {
-    class TorrentFileStream : FileStream
+    public class TorrentFileStream : FileStream
     {
         TorrentFile file;
 
@@ -46,8 +47,8 @@ namespace MonoTorrent.Client
         }
 
 
-        public TorrentFileStream(TorrentFile file, FileMode mode, FileAccess access, FileShare share)
-            : base(file.FullPath, mode, access, share, 1)
+        public TorrentFileStream(SafeFileHandle safeFileHanlde, TorrentFile file, FileMode mode, FileAccess access, FileShare share)
+            : base(safeFileHanlde, access, 1)
         {
             this.file = file;
         }

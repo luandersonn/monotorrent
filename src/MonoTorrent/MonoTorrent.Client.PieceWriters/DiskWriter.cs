@@ -29,6 +29,7 @@
 
 using System;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace MonoTorrent.Client.PieceWriters
 {
@@ -103,9 +104,9 @@ namespace MonoTorrent.Client.PieceWriters
             stream.Write(buffer, bufferOffset, count);
         }
 
-        public bool Exists(TorrentFile file)
+        public async Task<bool> ExistsAsync(TorrentFile file)
         {
-            return File.Exists(file.FullPath);
+            return false; //  File.Exists(file.FullPath); will not work
         }
 
         public void Flush(TorrentFile file)

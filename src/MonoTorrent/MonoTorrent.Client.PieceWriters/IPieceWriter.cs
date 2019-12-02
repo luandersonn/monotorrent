@@ -28,13 +28,14 @@
 
 
 using System;
+using System.Threading.Tasks;
 
 namespace MonoTorrent.Client.PieceWriters
 {
     public interface IPieceWriter : IDisposable
     {
         void Close(TorrentFile file);
-        bool Exists(TorrentFile file);
+        Task<bool> ExistsAsync(TorrentFile file);
         void Flush(TorrentFile file);
         void Move(TorrentFile file, string fullPath, bool overwrite);
         int Read(TorrentFile file, long offset, byte[] buffer, int bufferOffset, int count);

@@ -30,6 +30,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace MonoTorrent.Client.PieceWriters
 {
@@ -145,8 +146,8 @@ namespace MonoTorrent.Client.PieceWriters
             Writer.Close(file);
         }
 
-        public bool Exists(TorrentFile file)
-            => Writer.Exists(file);
+        public async Task<bool> ExistsAsync(TorrentFile file)
+            => await Writer.ExistsAsync(file);
 
         public void Flush(TorrentFile file)
         {

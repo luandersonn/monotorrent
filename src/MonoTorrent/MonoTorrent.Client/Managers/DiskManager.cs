@@ -200,7 +200,7 @@ namespace MonoTorrent.Client
         {
             await IOLoop;
 
-            return Writer.Exists(file);
+            return await Writer.ExistsAsync(file);
         }
 
         internal async Task<bool> CheckAnyFilesExistAsync(ITorrentData manager)
@@ -208,7 +208,7 @@ namespace MonoTorrent.Client
             await IOLoop;
 
             for (int i = 0; i < manager.Files.Length; i++)
-                if (Writer.Exists(manager.Files[i]))
+                if (await Writer.ExistsAsync(manager.Files[i]))
                     return true;
             return false;
         }

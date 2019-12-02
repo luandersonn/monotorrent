@@ -35,7 +35,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace MonoTorrent.Client
 {
-    static class NtfsSparseFile
+    public static class NtfsSparseFile
     {
         [StructLayout(LayoutKind.Sequential)]
         struct FILE_ZERO_DATA_INFORMATION
