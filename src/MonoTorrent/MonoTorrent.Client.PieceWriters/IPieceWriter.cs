@@ -37,7 +37,7 @@ namespace MonoTorrent.Client.PieceWriters
         void Close(TorrentFile file);
         Task<bool> ExistsAsync(TorrentFile file);
         Task FlushAsync(TorrentFile file);
-        void Move(TorrentFile file, string fullPath, bool overwrite);
+        Task MoveAsync(TorrentFile file, string fullPath, bool overwrite);
         Task<int> ReadAsync(TorrentFile file, long offset, byte[] buffer, int bufferOffset, int count);
         Task WriteAsync(TorrentFile file, long offset, byte[] buffer, int bufferOffset, int count);
     }

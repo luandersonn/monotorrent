@@ -298,7 +298,7 @@ namespace MonoTorrent.Client
             await IOLoop;
 
             newPath = Path.GetFullPath (newPath);
-            Writer.Move (file, newPath, false);
+            Writer.MoveAsync (file, newPath, false);
             file.FullPath = newPath;
         }
 
@@ -308,7 +308,7 @@ namespace MonoTorrent.Client
 
             foreach (TorrentFile file in manager.Files) {
                 string newPath = Path.Combine (newRoot, file.Path);
-                Writer.Move(file, newPath, overwrite);
+                Writer.MoveAsync(file, newPath, overwrite);
                 file.FullPath = newPath;
             }
         }

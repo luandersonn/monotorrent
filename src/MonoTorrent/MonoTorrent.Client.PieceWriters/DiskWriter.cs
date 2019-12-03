@@ -68,7 +68,7 @@ namespace MonoTorrent.Client.PieceWriters
             return await streamsBuffer.GetStreamAsync(file, access);
         }
 
-        public void Move(TorrentFile file, string newPath, bool overwrite)
+        public async Task MoveAsync(TorrentFile file, string newPath, bool overwrite)
         {
             streamsBuffer.CloseStream(file.FullPath);
             if (overwrite)

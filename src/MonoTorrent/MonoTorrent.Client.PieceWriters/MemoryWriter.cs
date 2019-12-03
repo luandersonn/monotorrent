@@ -184,9 +184,9 @@ namespace MonoTorrent.Client.PieceWriters
             ClientEngine.BufferManager.FreeBuffer(b.Buffer);
         }
 
-        public void Move(TorrentFile file, string newPath, bool overwrite)
+        public async Task MoveAsync(TorrentFile file, string newPath, bool overwrite)
         {
-            Writer.Move(file, newPath, overwrite);
+            await Writer.MoveAsync(file, newPath, overwrite);
         }
 
         public void Dispose()
