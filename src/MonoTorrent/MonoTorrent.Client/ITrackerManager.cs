@@ -49,7 +49,7 @@ namespace MonoTorrent.Client.Tracker
         /// </summary>
         bool LastAnnounceSucceeded { get; }
 
-        bool ChangeCurrentTracker(ITracker tracker);
+        Task<bool> ChangeCurrentTracker(ITracker tracker);
 
         /// <summary>
         /// The time, in UTC, when the most recent Announce request was sent

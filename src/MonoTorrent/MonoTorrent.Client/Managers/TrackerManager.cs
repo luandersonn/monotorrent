@@ -48,7 +48,8 @@ namespace MonoTorrent.Client.Tracker
         /// <summary>
         /// Returns the tracker which will be used, by default, for Announce or Scrape requests.
         /// </summary>
-        public ITracker CurrentTracker => Tiers.SelectMany (t => t.Trackers).OrderBy (t => t.TimeSinceLastAnnounce).FirstOrDefault ();
+        private ITracker _currentTrackerOverride;
+        public ITracker CurrentTracker  => _currentTrackerOverride != null ? _currentTrackerOverride :  Tiers.SelectMany(t => t.Trackers).OrderBy(t => t.TimeSinceLastAnnounce).FirstOrDefault();
 
         /// <summary>
         /// True if the most recent Announce request was successful.
@@ -212,23 +213,15 @@ namespace MonoTorrent.Client.Tracker
                         yield return Tuple.Create (tier, tracker);
         }
 
-        public bool ChangeCurrentTracker(ITracker tracker)
+        public async Task<bool> ChangeCurrentTracker(ITracker tracker)
         {
             if (CurrentTracker == tracker)
             {
                 return true;
             }
 
-            // TODO(alekseyv): fix this
-
-            // Ignoring fact that announce can be in progress.
-            //var waitHandle = Announce(TorrentEvent.Stopped);
-            //if (waitHandle.WaitOne(5000))
-            //{
-            //    CurrentTracker = tracker;
-            //    var waitHandle2 = Announce(TorrentEvent.Started);
-            //    return waitHandle.WaitOne(5000);
-            //}
+            _currentTrackerOverride = tracker;
+            await Announce(TorrentEvent.None, tracker);
 
             return false;
         }

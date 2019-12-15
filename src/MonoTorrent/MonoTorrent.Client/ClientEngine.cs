@@ -91,6 +91,7 @@ namespace MonoTorrent.Client
         private RateLimiterGroup uploadLimiters;
         private RateLimiter downloadLimiter;
         private RateLimiterGroup downloadLimiters;
+        private DiskWriterLimiter diskWriterLimiter;
         private IPieceWriter writer;
 
         #endregion
@@ -137,6 +138,14 @@ namespace MonoTorrent.Client
                 for (int i = 0; i < torrents.Count; i++)
                     total += torrents[i].Monitor.UploadSpeed;
                 return total;
+            }
+        }
+
+        public bool IsWriteBufferOverLimit
+        {
+            get
+            {
+                return !diskWriterLimiter.Unlimited;
             }
         }
 
@@ -189,8 +198,9 @@ namespace MonoTorrent.Client
             });
 
             downloadLimiter = new RateLimiter ();
+            diskWriterLimiter = new DiskWriterLimiter(DiskManager);
             downloadLimiters = new RateLimiterGroup {
-                new DiskWriterLimiter(DiskManager),
+                diskWriterLimiter,
                 downloadLimiter,
             };
 
