@@ -55,15 +55,23 @@ namespace MonoTorrent.Client.Modes
                 Manager.PieceManager.Reset();
 
                 Manager.Engine.ConnectionManager.CancelPendingConnects (Manager);
-                foreach (PeerId id in Manager.Peers.ConnectedPeers.ToArray ())
-                    Manager.Engine.ConnectionManager.CleanupSocket (Manager, id);
+                //foreach (PeerId id in Manager.Peers.ConnectedPeers.ToArray ())
+                //    Manager.Engine.ConnectionManager.CleanupSocket (Manager, id);
+
+                // Trying to make stopping faster.
+                var cleanupSocketsTask = Manager.Peers.ConnectedPeers.Select(id => Task.Run(() => Manager.Engine.ConnectionManager.CleanupSocket(Manager, id)));
+                await Task.WhenAll(cleanupSocketsTask);
 
                 var stoppingTasks = new List<Task>();
                 stoppingTasks.Add (Manager.Engine.DiskManager.CloseFilesAsync (Manager.Torrent));
                 if (Manager.TrackerManager.CurrentTracker != null && Manager.TrackerManager.CurrentTracker.Status == TrackerState.Ok)
-                    stoppingTasks.Add(Manager.TrackerManager.Announce(TorrentEvent.Stopped));
+                {
+                    // Do not wait for announce to complete, it might take a while for torrents that have a lot of trackers.
+                    // stoppingTasks.Add(Manager.TrackerManager.Announce(TorrentEvent.Stopped));
+                    _ = Manager.TrackerManager.Announce(TorrentEvent.Stopped);
+                }
 
-                var delayTask = Task.Delay (TimeSpan.FromMinutes (1), Cancellation.Token);
+                var delayTask = Task.Delay (TimeSpan.FromSeconds (30), Cancellation.Token);
                 var overallTasks = Task.WhenAll (stoppingTasks);
                 if (await Task.WhenAny (overallTasks, delayTask) == delayTask)
                     Logger.Log (null, "Timed out waiting for the announce request to complete");
