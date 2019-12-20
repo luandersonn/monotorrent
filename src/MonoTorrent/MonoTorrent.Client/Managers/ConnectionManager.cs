@@ -179,7 +179,7 @@ namespace MonoTorrent.Client
 
             id.ProcessingQueue = true;
             manager.Peers.ActivePeers.Add(id.Peer);
-            manager.Peers.HandshakingPeers.Add(id);
+            manager.Peers.ConnectedPeers.Add(id);
 
             try {
                 // Create a handshake message to send to the peer
@@ -223,7 +223,8 @@ namespace MonoTorrent.Client
             }
 
             try {
-                manager.Peers.HandshakingPeers.Remove (id);
+                if (id.BitField.Length != manager.Bitfield.Length)
+                    throw new TorrentException($"The peer's bitfield was of length {id.BitField.Length} but the TorrentManager's bitfield was of length {manager.Bitfield.Length}.");
                 manager.HandlePeerConnected(id);
 
                 // If there are any pending messages, send them otherwise set the queue
@@ -244,7 +245,7 @@ namespace MonoTorrent.Client
             }
         }
 
-        async void ReceiveMessagesAsync (IConnection2 connection, IEncryption decryptor, RateLimiterGroup downloadLimiter, ConnectionMonitor monitor, TorrentManager torrentManager, PeerId id)
+        internal async void ReceiveMessagesAsync (IConnection2 connection, IEncryption decryptor, RateLimiterGroup downloadLimiter, ConnectionMonitor monitor, TorrentManager torrentManager, PeerId id)
         {
             try {
                 while (true)
@@ -253,7 +254,7 @@ namespace MonoTorrent.Client
                     if (id.Disposed)
                     {
                         if (message is PieceMessage msg)
-                            ClientEngine.BufferManager.FreeBuffer(msg.Data);
+                            ClientEngine.BufferPool.Return(msg.Data);
                     }
                     else
                     {
@@ -288,7 +289,6 @@ namespace MonoTorrent.Client
                     manager.UploadingTo--;
 
                 manager.Peers.ConnectedPeers.Remove (id);
-                manager.Peers.HandshakingPeers.Remove (id);
                 manager.Peers.ActivePeers.Remove(id.Peer);
 
                 // If we get our own details, this check makes sure we don't try connecting to ourselves again
@@ -312,15 +312,21 @@ namespace MonoTorrent.Client
             id.Dispose ();
         }
 
+        /// <summary>
+        /// Cancel all pending connection attempts which have exceeded <see cref="EngineSettings.ConnectionTimeout"/>
+        /// </summary>
         internal void CancelPendingConnects()
         {
             CancelPendingConnects(null);
         }
 
+        /// <summary>
+        /// Cancel all pending connection for the given <see cref="TorrentManager"/>, or which have exceeded <see cref="EngineSettings.ConnectionTimeout"/>
+        /// </summary>
         internal void CancelPendingConnects (TorrentManager manager)
         {
             foreach (var pending in PendingConnects)
-                if (pending.Manager == manager || (!System.Diagnostics.Debugger.IsAttached && pending.Timer.ElapsedMilliseconds > 10 * 1000))
+                if (pending.Manager == manager || pending.Timer.Elapsed > Settings.ConnectionTimeout)
                     pending.Connection.Dispose ();
         }
 
@@ -350,6 +356,8 @@ namespace MonoTorrent.Client
                 Logger.Log(id.Connection, "ConnectionManager - Incoming connection fully accepted");
                 manager.Peers.AvailablePeers.Remove(id.Peer);
                 manager.Peers.ActivePeers.Add(id.Peer);
+                manager.Peers.ConnectedPeers.Add (id);
+
                 id.WhenConnected.Restart ();
                 // Baseline the time the last block was received
                 id.LastBlockReceived.Restart ();
@@ -378,7 +386,7 @@ namespace MonoTorrent.Client
 
                 try {
                     if (pm != null) {
-                        pm.Data = ClientEngine.BufferManager.GetBuffer (pm.ByteLength);
+                        pm.Data = ClientEngine.BufferPool.Rent (pm.ByteLength);
                         try {
                             await DiskManager.ReadAsync (manager.Torrent, pm.StartOffset + ((long)pm.PieceIndex * manager.Torrent.PieceLength), pm.Data, pm.RequestLength);
                         } catch (Exception ex) {
@@ -398,7 +406,7 @@ namespace MonoTorrent.Client
                     break;
                 } finally {
                     if (pm?.Data != null)
-                        ClientEngine.BufferManager.FreeBuffer (pm.Data);
+                        ClientEngine.BufferPool.Return (pm.Data);
                 }
             }
 

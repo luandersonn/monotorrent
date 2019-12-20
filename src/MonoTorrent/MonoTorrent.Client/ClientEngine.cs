@@ -82,7 +82,7 @@ namespace MonoTorrent.Client
 
         #region Member Variables
 
-        internal static readonly BufferManager BufferManager = new BufferManager();
+        internal static readonly BufferPool BufferPool = new BufferPool();
         private ListenManager listenManager;         // Listens for incoming connections and passes them off to the correct TorrentManager
         private int tickCount;
         private List<TorrentManager> torrents;
@@ -178,6 +178,10 @@ namespace MonoTorrent.Client
             Check.Settings(settings);
             Check.Listener(listener);
             Check.Writer(writer);
+
+            // This is just a sanity check to make sure the ReusableTasks.dll assembly is
+            // loadable.
+            GC.KeepAlive (ReusableTasks.ReusableTask.CompletedTask);
 
             this.writer = writer;
             PeerId = GeneratePeerId();

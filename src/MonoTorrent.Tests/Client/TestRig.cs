@@ -50,7 +50,12 @@ namespace MonoTorrent.Client
         public List<TorrentFile> FilesThatExist = new List<TorrentFile>();
         public List<TorrentFile> DoNotReadFrom = new List<TorrentFile>();
         public bool DontWrite;
-        public List<String> Paths = new List<string>();
+
+        /// <summary>
+        /// this is the list of paths we have read from
+        /// </summary>
+        public List<string> Paths = new List<string>();
+
         public int Read(TorrentFile file, long offset, byte[] buffer, int bufferOffset, int count)
         {
             if (DoNotReadFrom.Contains(file))
@@ -59,6 +64,8 @@ namespace MonoTorrent.Client
             if (!Paths.Contains(file.FullPath))
                 Paths.Add(file.FullPath);
 
+            if ((offset + count) > file.Length)
+                throw new ArgumentOutOfRangeException("Tried to read past the end of the file");
             if (!DontWrite)
                 for (int i = 0; i < count; i++)
                     buffer[bufferOffset + i] = (byte)(bufferOffset + i);
@@ -448,10 +455,6 @@ namespace MonoTorrent.Client
                 AddAnnounces(dict, tier);
 
             AddFiles(infoDict, files, pieceLength);
-            if (files.Length == 1)
-                dict["url-list"] = (BEncodedString)(TestWebSeed.ListenerURL + "File1.exe");
-            else
-                dict["url-list"] = (BEncodedString)TestWebSeed.ListenerURL;
             dict["creation date"] = (BEncodedNumber)(int)(DateTime.Now - new DateTime(1970, 1, 1)).TotalSeconds;
             dict["encoding"] = (BEncodedString)"UTF-8";
             dict["info"] = infoDict;

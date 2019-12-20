@@ -94,8 +94,8 @@ Notable features include:
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="GitInfo" Version="2.0.20" PrivateAssets="all" />
-    <PackageReference Include="ReusableTasks" Version="1.0.1" />
+    <PackageReference Include="GitInfo" Version="2.0.21" PrivateAssets="all" />
+    <PackageReference Include="ReusableTasks" Version="1.0.6" />
   </ItemGroup>
 
   <ItemGroup>

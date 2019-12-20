@@ -115,6 +115,7 @@ namespace MonoTorrent.Client.Modes
 
                 Manager.Peers.ClearAll ();
                 var exchangeMessage = new PeerExchangeMessage (13, peer, dotF, null);
+                Manager.Mode = mode;
                 Manager.Mode.HandleMessage (id, exchangeMessage);
 
                 var addedArgs = await peersTask.Task.WithTimeout ();
@@ -176,7 +177,10 @@ namespace MonoTorrent.Client.Modes
             Assert.IsTrue (Peer.Connection.Connected, "#1");
             Manager.HandlePeerConnected (Peer);
             Assert.IsTrue (Peer.Connection.Connected, "#2");
-            Assert.IsTrue (Manager.Peers.ConnectedPeers.Contains (Peer), "#3");
+
+            // ConnectionManager should add the PeerId to the Connected list whenever
+            // an outgoing connection is made, or an incoming one is received.
+            Assert.IsFalse (Manager.Peers.ConnectedPeers.Contains (Peer), "#3");
         }
 
         [Test]

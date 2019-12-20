@@ -51,10 +51,7 @@ namespace MonoTorrent.Client.Modes
         public void Setup()
         {
             conn = new ConnectionPair().WithTimeout ();
-            Settings = new EngineSettings ();
             PieceWriter = new TestWriter ();
-            DiskManager = new DiskManager (Settings, PieceWriter);
-            ConnectionManager = new ConnectionManager ("LocalPeerId", Settings, DiskManager);
             TrackerManager = new ManualTrackerManager ();
 
             int[] fileSizes = {
@@ -65,6 +62,12 @@ namespace MonoTorrent.Client.Modes
             };
             Manager = TestRig.CreateMultiFileManager (fileSizes, Piece.BlockSize * 2);
             Manager.SetTrackerManager (TrackerManager);
+            Manager.Engine.DiskManager.Writer = PieceWriter;
+
+            Settings = Manager.Engine.Settings;
+            DiskManager = Manager.Engine.DiskManager;
+            ConnectionManager = Manager.Engine.ConnectionManager; 
+
             Peer = new PeerId (new Peer ("", new Uri ("ipv4://123.123.123.123:12345"), EncryptionTypes.All), conn.Outgoing, Manager.Bitfield?.Clone ().SetAll (true)) {
                 ProcessingQueue = true,
                 IsChoking = false,
@@ -128,14 +131,19 @@ namespace MonoTorrent.Client.Modes
 
             var mode = new HashingMode (Manager, DiskManager, ConnectionManager, Settings);
             Manager.Mode = mode;
+
+            var pausedEvent = Manager.WaitForState (TorrentState.HashingPaused);
             mode.Pause ();
+            await pausedEvent.WithTimeout ("#pause");
             Assert.AreEqual (TorrentState.HashingPaused, mode.State, "#a");
 
             var hashingTask = mode.WaitForHashingToComplete ();
             await Task.Delay (50);
             Assert.IsFalse (pieceHashed.Task.IsCompleted, "#1");
 
+            var resumeEvent = Manager.WaitForState (TorrentState.Hashing);
             mode.Resume ();
+            await resumeEvent.WithTimeout ("#resume");
             Assert.AreEqual (pieceHashed.Task, await Task.WhenAny (pieceHashed.Task, Task.Delay (1000)), "#2");
             Assert.AreEqual (TorrentState.Hashing, mode.State, "#b");
         }
@@ -163,6 +171,7 @@ namespace MonoTorrent.Client.Modes
             foreach (var f in Manager.Torrent.Files) {
                 PieceWriter.FilesThatExist.Add (f);
                 f.Priority = Priority.DoNotDownload;
+                f.BitField.SetAll (true);
             }
 
             var hashingMode = new HashingMode (Manager, DiskManager, ConnectionManager, Settings);
@@ -175,6 +184,8 @@ namespace MonoTorrent.Client.Modes
             // No piece should be marked as available, and no pieces should actually be hashchecked.
             Assert.IsTrue (Manager.Bitfield.AllFalse, "#2");
             Assert.AreEqual (Manager.UnhashedPieces.TrueCount, Manager.UnhashedPieces.Length, "#3");
+            foreach (var f in Manager.Torrent.Files)
+                Assert.IsTrue (f.BitField.AllFalse, "#4." + f.Path);
         }
 
         [Test]
@@ -243,6 +254,32 @@ namespace MonoTorrent.Client.Modes
 
             Assert.ThrowsAsync<OperationCanceledException> (() => Manager.Mode.TryHashPendingFilesAsync (), "#1");
             Assert.AreEqual (3, pieceHashCount, "#2");
+        }
+
+        [Test]
+        public async Task StopWhileHashingPaused ()
+        {
+            PieceWriter.FilesThatExist.AddRange (Manager.Torrent.Files);
+
+            int getHashCount = 0;
+            DiskManager.GetHashAsyncOverride = (manager, index) => {
+                getHashCount++;
+                if (getHashCount == 2)
+                    Manager.PauseAsync ().Wait ();
+                return Enumerable.Repeat ((byte)0, 20).ToArray ();
+            };
+
+            var pausedState = Manager.WaitForState (TorrentState.HashingPaused);
+
+            // Start hashing and wait until we pause
+            var hashing = Manager.HashCheckAsync (false);
+            await pausedState;
+            Assert.AreEqual (2, getHashCount, "#1");
+
+            // Now make sure there are no more reads
+            await Manager.StopAsync ().WithTimeout ("#2");
+            await hashing.WithTimeout ("#3");
+            Assert.AreEqual (2, getHashCount, "#4");
         }
 
         [Test]

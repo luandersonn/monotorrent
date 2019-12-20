@@ -36,17 +36,17 @@ namespace MonoTorrent.Client.Modes
 {
     class HashingMode : Mode
     {
-        public override bool CanHashCheck => false;
 
         TaskCompletionSource<object> PausedCompletionSource { get; set; }
 
+        public override bool CanAcceptConnections => false;
+        public override bool CanHandleMessages => false;
+        public override bool CanHashCheck => false;
         public override TorrentState State => PausedCompletionSource.Task.IsCompleted ? TorrentState.Hashing : TorrentState.HashingPaused;
 
         public HashingMode (TorrentManager manager, DiskManager diskManager, ConnectionManager connectionManager, EngineSettings settings)
             : base (manager, diskManager, connectionManager, settings)
         {
-            CanAcceptConnections = false;
-
             // Mark it as completed so we are *not* paused by default;
             PausedCompletionSource = new TaskCompletionSource<object> ();
             PausedCompletionSource.TrySetResult (null);
@@ -60,7 +60,7 @@ namespace MonoTorrent.Client.Modes
             PausedCompletionSource?.TrySetResult (null);
             PausedCompletionSource = new TaskCompletionSource<object> ();
             Cancellation.Token.Register (() => PausedCompletionSource.TrySetCanceled ());
-            Manager.RaiseTorrentStateChanged (new TorrentStateChangedEventArgs (Manager, TorrentState.Hashing, State));
+            Manager.RaiseTorrentStateChanged (new TorrentStateChangedEventArgs (Manager, TorrentState.HashingPaused, State));
         }
 
         public void Resume ()
@@ -69,7 +69,7 @@ namespace MonoTorrent.Client.Modes
                 return;
 
             PausedCompletionSource.TrySetResult (null);
-            Manager.RaiseTorrentStateChanged (new TorrentStateChangedEventArgs (Manager, TorrentState.HashingPaused, State));
+            Manager.RaiseTorrentStateChanged (new TorrentStateChangedEventArgs (Manager, TorrentState.Hashing, State));
         }
 
         public async Task WaitForHashingToComplete ()
@@ -79,13 +79,19 @@ namespace MonoTorrent.Client.Modes
 
             Manager.HashFails = 0;
             if (await DiskManager.CheckAnyFilesExistAsync (Manager.Torrent)) {
+                Cancellation.Token.ThrowIfCancellationRequested ();
                 for (int index = 0; index < Manager.Torrent.Pieces.Count; index++) {
                     if (!Manager.Torrent.Files.Any (f => index >= f.StartPieceIndex && index <= f.EndPieceIndex && f.Priority != Priority.DoNotDownload)) {
-                        Manager.Bitfield [index] = false;
+                        // If a file is marked 'do not download' ensure we update the TorrentFiles
+                        // so they also report that the piece is not available/downloaded.
+                        Manager.OnPieceHashed (index, false);
+                        // Then mark this piece as being unhashed so we don't try to download it.
+                        Manager.UnhashedPieces[index] = true;
                         continue;
                     }
 
                     await PausedCompletionSource.Task;
+                    Cancellation.Token.ThrowIfCancellationRequested ();
 
                     var hash = await DiskManager.GetHashAsync(Manager.Torrent, index);
 

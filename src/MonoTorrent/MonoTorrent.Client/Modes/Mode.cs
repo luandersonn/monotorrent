@@ -33,6 +33,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using MonoTorrent.BEncoding;
+using MonoTorrent.Client.Connections;
+using MonoTorrent.Client.Encryption;
 using MonoTorrent.Client.Messages;
 using MonoTorrent.Client.Messages.FastPeer;
 using MonoTorrent.Client.Messages.Libtorrent;
@@ -49,12 +51,16 @@ namespace MonoTorrent.Client.Modes
         protected DiskManager DiskManager { get; }
         protected TorrentManager Manager { get; }
         protected EngineSettings Settings { get; }
+
+        public virtual bool CanAcceptConnections => true;
+        public virtual bool CanHandleMessages => true;
+        public virtual bool CanHashCheck => false;
         public abstract TorrentState State { get; }
+        public CancellationToken Token => Cancellation.Token;
 
         protected Mode(TorrentManager manager, DiskManager diskManager, ConnectionManager connectionManager, EngineSettings settings)
         {
             Cancellation = new CancellationTokenSource ();
-            CanAcceptConnections = true;
             ConnectionManager = connectionManager;
             DiskManager = diskManager;
             Manager = manager;
@@ -65,6 +71,9 @@ namespace MonoTorrent.Client.Modes
 
         public void HandleMessage(PeerId id, PeerMessage message)
         {
+            if (!CanHandleMessages)
+                return;
+
             if (message is IFastPeerMessage && !id.SupportsFastPeer)
                 throw new MessageException("Peer shouldn't support fast peer messages");
 
@@ -124,11 +133,6 @@ namespace MonoTorrent.Client.Modes
             }
         }
 
-        public bool CanAcceptConnections
-        {
-            get; protected set;
-        }
-
         public bool ShouldConnect(PeerId peer)
         {
             return ShouldConnect(peer.Peer);
@@ -137,11 +141,6 @@ namespace MonoTorrent.Client.Modes
         public virtual bool ShouldConnect(Peer peer)
         {
             return true;
-        }
-
-        public virtual bool CanHashCheck
-        {
-            get { return false; }
         }
 
         protected virtual void HandleGenericExtensionMessage(PeerId id, ExtensionMessage extensionMessage)
@@ -336,7 +335,7 @@ namespace MonoTorrent.Client.Modes
             if (piece != null)
                 WritePieceAsync (message, piece);
             else
-                ClientEngine.BufferManager.FreeBuffer(message.Data);
+                ClientEngine.BufferPool.Return(message.Data);
             // Keep adding new piece requests to this peers queue until we reach the max pieces we're allowed queue
             Manager.PieceManager.AddPieceRequests(id);
         }
@@ -348,14 +347,17 @@ namespace MonoTorrent.Client.Modes
 
             try {
                 await DiskManager.WriteAsync(Manager.Torrent, offset, message.Data, message.RequestLength);
+                if (Cancellation.IsCancellationRequested)
+                    return;
             } catch (Exception ex) {
                 Manager.TrySetError (Reason.WriteFailure, ex);
                 return;
+            } finally {
+                ClientEngine.BufferPool.Return(message.Data);
             }
 
             piece.TotalWritten++;
 
-            ClientEngine.BufferManager.FreeBuffer(message.Data);
             // If we haven't received all the pieces to disk, there's no point in hash checking
             if (!piece.AllBlocksWritten)
                 return;
@@ -364,6 +366,8 @@ namespace MonoTorrent.Client.Modes
             byte[] hash;
             try {
                 hash = await DiskManager.GetHashAsync(Manager.Torrent, piece.Index);
+                if (Cancellation.IsCancellationRequested)
+                    return;
             } catch (Exception ex) {
                 Manager.TrySetError (Reason.ReadFailure, ex);
                 return;
@@ -621,37 +625,33 @@ namespace MonoTorrent.Client.Modes
 
         void DownloadLogic(int counter)
         {
-            // FIXME: Hardcoded 15kB/sec - is this ok?
-            if ((DateTime.Now - Manager.StartTime) > TimeSpan.FromMinutes(1) && Manager.Monitor.DownloadSpeed < 15 * 1024)
+            if ((DateTime.Now - Manager.StartTime) > Manager.Settings.WebSeedDelay && Manager.Monitor.DownloadSpeed < Manager.Settings.WebSeedSpeedTrigger)
             {
-                /*
-                foreach (string s in manager.Torrent.GetRightHttpSeeds)
+                foreach (var seedUri in Manager.Torrent.GetRightHttpSeeds)
                 {
-                    string peerId = "-WebSeed-";
-                    peerId = peerId + (webseedCount++).ToString().PadLeft(20 - peerId.Length, '0');
+                    var peerId = HttpConnection.CreatePeerId ();
 
-                    Uri uri = new Uri(s);
-                    Peer peer = new Peer(peerId, uri);
-                    PeerId id = new PeerId(peer, manager);
-                    HttpConnection connection = new HttpConnection(new Uri(s));
-                    connection.Manager = this.manager;
-                    peer.IsSeeder = true;
+                    var uri = new Uri(seedUri);
+                    var peer = new Peer(peerId, uri);
+
+                    var connection = (HttpConnection) ConnectionFactory.Create (uri);
+                    connection.Manager = Manager;
+
+                    var id = new PeerId (peer, connection, Manager.Bitfield.Clone ().SetAll (true));
                     id.BitField.SetAll(true);
                     id.Encryptor = PlainTextEncryption.Instance;
                     id.Decryptor = PlainTextEncryption.Instance;
                     id.IsChoking = false;
-                    id.AmInterested = !manager.Complete;
-                    id.Connection = connection;
+                    id.AmInterested = !Manager.Complete;
                     id.ClientApp = new Software(id.PeerID);
-                    manager.Peers.ConnectedPeers.Add(id);
-                    manager.RaisePeerConnected(new PeerConnectionEventArgs(manager, id, Direction.Outgoing));
-                    PeerIO.EnqueueReceiveMessage (id.Connection, id.Decryptor, Manager.DownloadLimiter, id.Monitor, id.TorrentManager, id.ConnectionManager.messageReceivedCallback, id);
+                    Manager.Peers.ConnectedPeers.Add(id);
+                    Manager.RaisePeerConnected(new PeerConnectedEventArgs (Manager, id));
+                    ConnectionManager.ReceiveMessagesAsync (id.Connection, id.Decryptor, Manager.DownloadLimiters, id.Monitor, Manager, id);
                 }
 
                 // FIXME: In future, don't clear out this list. It may be useful to keep the list of HTTP seeds
                 // Add a boolean or something so that we don't add them twice.
-                manager.Torrent.GetRightHttpSeeds.Clear();
-                */
+                Manager.Torrent.GetRightHttpSeeds.Clear();
             }
 
             // Remove inactive peers we haven't heard from if we're downloading
@@ -695,7 +695,11 @@ namespace MonoTorrent.Client.Modes
 
         internal async Task TryHashPendingFilesAsync ()
         {
-            if (hashingPendingFiles || !Manager.HasMetadata)
+            // If we cannot handle peer messages then we should not try to async hash.
+            // This adds a little bit of a double meaning to the property (for now).
+            // Any mode which doesn't allow processing peer messages also does not allow
+            // partial hashing.
+            if (hashingPendingFiles || !Manager.HasMetadata || !CanHandleMessages)
                 return;
 
             // FIXME: Handle errors from DiskManager and also handle cancellation if the Mode is replaced.

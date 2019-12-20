@@ -253,7 +253,7 @@ namespace MonoTorrent.Client
             long startOffset = incrementalHash.NextOffsetToHash;
             long endOffset = Math.Min((long)manager.PieceLength * (pieceIndex + 1), manager.Size);
 
-            byte[] hashBuffer = ClientEngine.BufferManager.GetBuffer(Piece.BlockSize);
+            byte[] hashBuffer = ClientEngine.BufferPool.Rent(Piece.BlockSize);
             try {
                 var hasher = incrementalHash.Hasher;
 
@@ -272,7 +272,7 @@ namespace MonoTorrent.Client
             } finally {
                 IncrementalHashCache.Enqueue (incrementalHash);
                 IncrementalHashes.Remove (pieceIndex);
-                ClientEngine.BufferManager.FreeBuffer(hashBuffer);
+                ClientEngine.BufferPool.Return(hashBuffer);
             }
         }
 
@@ -291,6 +291,36 @@ namespace MonoTorrent.Client
             await ProcessBufferedIOAsync(true);
             foreach (var file in manager.Files)
                 Writer.Close (file);
+        }
+
+        /// <summary>
+        /// Iterates over every file in this torrent and flushes any pending data to disk. Typically a
+        /// <see cref="TorrentManager"/> will be passed to this method.
+        /// </summary>
+        /// <param name="manager">The torrent containing the files to flush</param>
+        /// <returns></returns>
+        public Task FlushAsync (ITorrentData manager)
+            => FlushAsync (manager, -1);
+
+        /// <summary>
+        /// Iterates over every file in this torrent which is contains data from the specified piece and
+        /// flushes that file to disk. Typically a <see cref="TorrentManager"/> will be passed to this method.
+        /// </summary>
+        /// <param name="manager">The torrent containing the files to flush</param>
+        /// <param name="pieceIndex">The index of the piece to flush.</param>
+        /// <returns></returns>
+        public async Task FlushAsync (ITorrentData manager, int pieceIndex)
+        {
+            if (manager is null)
+                throw new ArgumentNullException (nameof (manager));
+
+            await IOLoop;
+
+            await WaitForPendingWrites ();
+            foreach (var file in manager.Files) {
+                if (pieceIndex == -1 || (pieceIndex >= file.StartPieceIndex && pieceIndex <= file.EndPieceIndex))
+                    Writer.Flush (file);
+            }
         }
 
         internal async Task MoveFileAsync (TorrentFile file, string newPath)
@@ -372,7 +402,7 @@ namespace MonoTorrent.Client
             }
         }
 
-        async Task ProcessBufferedIOAsync (bool force = false)
+        async ReusableTask ProcessBufferedIOAsync (bool force = false)
         {
             await IOLoop;
             BufferedIO io;
@@ -476,10 +506,13 @@ namespace MonoTorrent.Client
         /// </summary>
         /// <param name="delta">The amount of time, in milliseconds, which has passed</param>
         /// <returns></returns>
-        internal Task Tick (int delta)
-            => Tick (delta, true);
+        internal async ReusableTask Tick(int delta)
+        {
+            await IOLoop;
+            await Tick(delta, true);
+        }
 
-        Task Tick (int delta, bool waitForBufferedIO)
+        ReusableTask Tick (int delta, bool waitForBufferedIO)
         {
             UpdateTimer.Restart ();
 
@@ -490,7 +523,7 @@ namespace MonoTorrent.Client
             ReadLimiter.UpdateChunks (Settings.MaximumDiskReadRate, ReadRate);
 
             var processTask = ProcessBufferedIOAsync ();
-            return waitForBufferedIO ? processTask : Task.CompletedTask;
+            return waitForBufferedIO ? processTask : ReusableTask.CompletedTask;
         }
 
         void Write (ITorrentData manager, long offset, byte [] buffer, int count)

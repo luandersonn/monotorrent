@@ -1,10 +1,10 @@
-//
-// ErrorMode.cs
+﻿//
+// Synchronizer.cs
 //
 // Authors:
 //   Alan McGovern alan.mcgovern@gmail.com
 //
-// Copyright (C) 2009 Alan McGovern
+// Copyright (C) 2019 Alan McGovern
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -27,25 +27,38 @@
 //
 
 
-namespace MonoTorrent.Client.Modes
+using System.Collections.Generic;
+using ReusableTasks;
+
+namespace MonoTorrent
 {
-    class ErrorMode : Mode
+    class Synchronizer
     {
-        public override TorrentState State => TorrentState.Error;
-
-        public override bool CanAcceptConnections => false;
-        public override bool CanHandleMessages => false;
-
-        public ErrorMode (TorrentManager manager, DiskManager diskManager, ConnectionManager connectionManager, EngineSettings settings)
-            : base (manager, diskManager, connectionManager, settings)
+        public static Queue<Synchronizer> CreateLinked (int count)
         {
+            var all = new List<Synchronizer> ();
+            for (int i = 0; i < count; i++)
+                all.Add (new Synchronizer ());
+
+            all [0].Self.SetResult (true);
+
+            for (int i = 0; i < count; i++) {
+                all [i].PreviousNode = all [(i - 1 + count) % count];
+                all [i].NextNode = all [(i + 1 + count) % count];
+            }
+            return new Queue<Synchronizer> (all);
         }
 
-        public override void Tick(int counter)
+        public ReusableTaskCompletionSource<bool> Next => NextNode.Self;
+        public ReusableTaskCompletionSource<bool> Self { get; } = new ReusableTaskCompletionSource<bool> ();
+
+        Synchronizer PreviousNode;
+        Synchronizer NextNode;
+
+        public void Disconnect ()
         {
-            Manager.Monitor.Reset();
-            foreach (var id in Manager.Peers.ConnectedPeers.ToArray ())
-                Manager.Engine.ConnectionManager.CleanupSocket (Manager, id);
+            PreviousNode.NextNode = NextNode;
+            NextNode.PreviousNode = PreviousNode;
         }
     }
 }

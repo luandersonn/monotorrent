@@ -38,22 +38,19 @@ namespace MonoTorrent.Client.Modes
 {
     class StoppingMode : Mode
     {
+        public override bool CanAcceptConnections => false;
+        public override bool CanHandleMessages => false;
         public override bool CanHashCheck => false;
         public override TorrentState State => TorrentState.Stopping;
 
         public StoppingMode (TorrentManager manager, DiskManager diskManager, ConnectionManager connectionManager, EngineSettings settings)
             : base (manager, diskManager, connectionManager, settings)
         {
-            CanAcceptConnections = false;
         }
 
         public async Task WaitForStoppingToComplete ()
         {
             try {
-                Manager.Monitor.Reset();
-                Manager.Peers.ClearAll();
-                Manager.PieceManager.Reset();
-
                 Manager.Engine.ConnectionManager.CancelPendingConnects (Manager);
                 //foreach (PeerId id in Manager.Peers.ConnectedPeers.ToArray ())
                 //    Manager.Engine.ConnectionManager.CleanupSocket (Manager, id);
@@ -61,6 +58,11 @@ namespace MonoTorrent.Client.Modes
                 // Trying to make stopping faster.
                 var cleanupSocketsTask = Manager.Peers.ConnectedPeers.Select(id => Task.Run(() => Manager.Engine.ConnectionManager.CleanupSocket(Manager, id)));
                 await Task.WhenAll(cleanupSocketsTask);
+
+                Manager.Monitor.Reset();
+                Manager.Peers.ClearAll();
+                Manager.PieceManager.Reset();
+                Manager.finishedPieces.Clear ();
 
                 var stoppingTasks = new List<Task>();
                 stoppingTasks.Add (Manager.Engine.DiskManager.CloseFilesAsync (Manager.Torrent));

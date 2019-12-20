@@ -29,11 +29,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-
+using MonoTorrent.BEncoding;
 using MonoTorrent.Client.Connections;
 using MonoTorrent.Client.Messages;
 using MonoTorrent.Client.Messages.Standard;
@@ -44,7 +45,7 @@ using NUnit.Framework;
 namespace MonoTorrent.Client
 {
     [TestFixture]
-    public class TestWebSeed
+    public class WebSeedTests
     {
         Regex rangeMatcher = new Regex(@"(\d{1,10})-(\d{1,10})");
        
@@ -57,7 +58,7 @@ namespace MonoTorrent.Client
         public const string ListenerURL = "http://127.0.0.1:51423/announce/";
 
         PeerId id;
-        MessageBundle requests;
+        RequestBundle requests;
         int numberOfPieces = 50;
 
         [OneTimeSetUp]
@@ -76,7 +77,8 @@ namespace MonoTorrent.Client
             listener.Close();
         }
 
-        [SetUp] public void Setup()
+        [SetUp]
+        public void Setup()
         {
             requestedUrl.Clear();
             partialData = false;
@@ -93,8 +95,9 @@ namespace MonoTorrent.Client
             id.AmInterested = true;
             id.BitField.SetAll(true);
             id.MaxPendingRequests = numberOfPieces;
-            
-            requests = new MessageBundle (rig.Manager.PieceManager.Picker.PickPiece(id, id.BitField, new List<PeerId>(), numberOfPieces));
+
+            rig.Manager.PieceManager.AddPieceRequests (id);
+            requests = (RequestBundle) id.Dequeue ();
         }
 
         [TearDown]
@@ -130,6 +133,17 @@ namespace MonoTorrent.Client
                 await receiveTask;
                 await connection.ReceiveAsync (new byte[100000], 0, 100000);
             }, "#2");
+        }
+
+        [Test]
+        public void CreatePeerIds ()
+        {
+            var ids = new HashSet<BEncodedString> ();
+            for (int i = 0; i < 20; i ++) {
+                var id = HttpConnection.CreatePeerId ();
+                Assert.AreEqual (20, id.TextBytes.Length, "#1");
+                Assert.IsTrue (ids.Add (id), "#2");
+            }
         }
 
         [Test]
@@ -175,15 +189,33 @@ namespace MonoTorrent.Client
         [Test]
         public void ChunkedRequest()
         {
-            if (requests.Messages.Count != 0)
-                rig.Manager.PieceManager.Picker.CancelRequests(id);
-            
-            requests = new MessageBundle (rig.Manager.PieceManager.Picker.PickPiece(id, id.BitField, new List<PeerId>(), 256));
+            rig.Manager.PieceManager.Picker.CancelRequests(id);
+
+            rig.Manager.PieceManager.AddPieceRequests (id);
+            requests = (RequestBundle) id.Dequeue ();
 
             byte[] sendBuffer = requests.Encode();
             var sendTask = Send (sendBuffer, 0, sendBuffer.Length, 1);
 
             Assert.ThrowsAsync<ArgumentException>(() => sendTask);
+        }
+
+        [Test]
+        public void CompleteChunkBeforeRequestNext ()
+        {
+            var messages = requests.ToRequestMessages ().ToList ();
+            for (int i = 0; i < messages.Count - 1; i ++) {
+                rig.Manager.PieceManager.PieceDataReceived (id, new PieceMessage (messages[i].PieceIndex, messages[i].StartOffset, messages[i].RequestLength));
+                int orig = id.AmRequestingPiecesCount;
+                rig.Manager.PieceManager.AddPieceRequests (id);
+                Assert.AreEqual (orig, id.AmRequestingPiecesCount, "#1." + i);
+            }
+
+            rig.Manager.PieceManager.PieceDataReceived (id, new PieceMessage (messages.Last ().PieceIndex, messages.Last ().StartOffset, messages.Last ().RequestLength));
+            Assert.AreEqual (0, id.AmRequestingPiecesCount, "#2");
+
+            rig.Manager.PieceManager.AddPieceRequests (id);
+            Assert.AreNotEqual (0, id.AmRequestingPiecesCount, "#3");
         }
 
         [Test]
@@ -213,14 +245,15 @@ namespace MonoTorrent.Client
 
         private async Task CompleteSendOrReceiveFirst(byte[] buffer)
         {
-            while (requests.Messages.Count > 0)
+            var allRequests = requests.ToRequestMessages ().ToList ();
+            while (allRequests.Count > 0)
             {
                 int size = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(buffer, 0));
 
                 await NetworkIO.ReceiveAsync (connection, buffer, 4, size, null, null, null);
 
                 PieceMessage m = (PieceMessage)PeerMessage.DecodeMessage(buffer, 0, size + 4, rig.Manager.Torrent);
-                RequestMessage request = (RequestMessage)requests.Messages[0];
+                var request = allRequests [0];
                 Assert.AreEqual(request.PieceIndex, m.PieceIndex, "#1");
                 Assert.AreEqual(request.RequestLength, m.RequestLength, "#1");
                 Assert.AreEqual(request.StartOffset, m.StartOffset, "#1");
@@ -229,9 +262,9 @@ namespace MonoTorrent.Client
                     if (buffer[i + 13] != (byte)(m.PieceIndex * rig.Torrent.PieceLength + m.StartOffset + i))
                         throw new Exception("Corrupted data received");
                 
-                requests.Messages.RemoveAt(0);
+                allRequests.RemoveAt(0);
 
-                if (requests.Messages.Count == 0)
+                if (allRequests.Count == 0)
                 {
                     break;
                 }
@@ -331,6 +364,8 @@ namespace MonoTorrent.Client
         {
             rig.Dispose();
             rig = TestRig.CreateSingleFile();
+            rig.Torrent.GetRightHttpSeeds.Add (ListenerURL + "File1.exe");
+
             string url = rig.Torrent.GetRightHttpSeeds[0];
             connection = new HttpConnection(new Uri (url));
             connection.Manager = rig.Manager;
@@ -342,7 +377,8 @@ namespace MonoTorrent.Client
             id.BitField.SetAll(true);
             id.MaxPendingRequests = numberOfPieces;
 
-            requests = new MessageBundle (rig.Manager.PieceManager.Picker.PickPiece(id, id.BitField, new List<PeerId>(), numberOfPieces));
+            rig.Manager.PieceManager.AddPieceRequests (id);
+            requests = (RequestBundle) id.Dequeue ();
             await RecieveFirst();
             Assert.AreEqual(url, requestedUrl[0]);
         }

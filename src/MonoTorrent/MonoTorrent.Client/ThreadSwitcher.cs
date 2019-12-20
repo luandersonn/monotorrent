@@ -1,10 +1,10 @@
-//
-// ErrorMode.cs
+﻿//
+// ThreadPoolAwaitable.cs
 //
 // Authors:
 //   Alan McGovern alan.mcgovern@gmail.com
 //
-// Copyright (C) 2009 Alan McGovern
+// Copyright (C) 2019 Alan McGovern
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -27,25 +27,33 @@
 //
 
 
-namespace MonoTorrent.Client.Modes
+using System;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Threading;
+
+namespace MonoTorrent.Client
 {
-    class ErrorMode : Mode
+    struct ThreadSwitcher : INotifyCompletion
     {
-        public override TorrentState State => TorrentState.Error;
+        static readonly WaitCallback Callback = (state) => ((Action) state).Invoke ();
 
-        public override bool CanAcceptConnections => false;
-        public override bool CanHandleMessages => false;
+        [EditorBrowsable (EditorBrowsableState.Never)]
+        public ThreadSwitcher GetAwaiter () => this;
 
-        public ErrorMode (TorrentManager manager, DiskManager diskManager, ConnectionManager connectionManager, EngineSettings settings)
-            : base (manager, diskManager, connectionManager, settings)
+        [EditorBrowsable (EditorBrowsableState.Never)]
+        public bool IsCompleted => false;
+
+        [EditorBrowsable (EditorBrowsableState.Never)]
+        public void GetResult()
         {
+
         }
 
-        public override void Tick(int counter)
+        [EditorBrowsable (EditorBrowsableState.Never)]
+        public void OnCompleted(Action continuation)
         {
-            Manager.Monitor.Reset();
-            foreach (var id in Manager.Peers.ConnectedPeers.ToArray ())
-                Manager.Engine.ConnectionManager.CleanupSocket (Manager, id);
+            ThreadPool.UnsafeQueueUserWorkItem (Callback, continuation);
         }
     }
 }

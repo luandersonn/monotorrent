@@ -29,34 +29,39 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace MonoTorrent.Client.PiecePicking
 {
     public class EndGameSwitcher : PiecePicker
     {
-        const int Threshold = 20;
+        /// <summary>
+        /// Allow entering endgame mode if there are fewer than 256 blocks outstanding.
+        /// </summary>
+        const int Threshold = 256;
 
         BitField bitfield;
-        int blocksPerPiece;
         bool inEndgame;
         PiecePicker endgame;
         BitField endgameSelector;
         ITorrentData torrentData;
         PiecePicker standard;
-		TorrentManager torrentManager;
+        TorrentManager torrentManager;
 
-        PiecePicker ActivePicker
-        {
-            get { return inEndgame ? endgame : standard; }
-        }
+        public PiecePicker ActivePicker => inEndgame ? endgame : standard;
 
-        public EndGameSwitcher(StandardPicker standard, EndGamePicker endgame, int blocksPerPiece, TorrentManager torrentManager)
-            : base(null)
+        public EndGameSwitcher (PiecePicker standard, EndGamePicker endgame, TorrentManager torrentManager)
+            : base (null)
         {
             this.standard = standard;
             this.endgame = endgame;
-            this.blocksPerPiece = blocksPerPiece;
-			this.torrentManager = torrentManager;
+            this.torrentManager = torrentManager;
+        }
+
+        [Obsolete("Use the constructor overload which does not specify 'blocksPerPiece'. The 'blocksPerPiece' value is calculated from the ITorrentData")]
+        public EndGameSwitcher(StandardPicker standard, EndGamePicker endgame, int blocksPerPiece, TorrentManager torrentManager)
+            : this(standard, endgame, torrentManager)
+        {
         }
 
         public override void CancelRequest(IPieceRequester peer, int piece, int startOffset, int length)
@@ -100,8 +105,12 @@ namespace MonoTorrent.Client.PiecePicking
             this.endgameSelector = new BitField(bitfield.Length);
             this.torrentData = torrentData;
             inEndgame = false;
-            TryEnableEndgame();
-            ActivePicker.Initialise(bitfield, torrentData, requests);
+
+            // Always initialize both pickers, but we should only give the active requests to the Standard picker.
+            // We should never *default* to endgame mode, we should always start in regular mode and enter endgame
+            // mode after we fail to pick a piece.
+            standard.Initialise (bitfield, torrentData, requests);
+            endgame.Initialise  (bitfield, torrentData, Enumerable.Empty<Piece> ());
         }
 
         public override bool IsInteresting(BitField bitfield)
@@ -140,21 +149,24 @@ namespace MonoTorrent.Client.PiecePicking
 
             // If the total number of blocks remaining is less than Threshold, activate Endgame mode.
             int count = standard.CurrentReceivedCount ();
-            inEndgame = Math.Max(blocksPerPiece, (endgameSelector.TrueCount * blocksPerPiece)) - count < Threshold;
-			if (inEndgame)
-			{
-				endgame.Initialise(bitfield, torrentData, standard.ExportActiveRequests());
-				standard.Reset ();
-				// Set torrent's IsInEndGame flag
-				torrentManager.isInEndGame = true;
-			}
+            int blocksPerPiece = torrentData.PieceLength / Piece.BlockSize;
+            inEndgame = Math.Max(blocksPerPiece, (endgameSelector.TrueCount * blocksPerPiece)) - count <= Threshold;
+            if (inEndgame)
+            {
+                endgame.Initialise(bitfield, torrentData, standard.ExportActiveRequests());
+                standard.Reset ();
+                // Set torrent's IsInEndGame flag
+                if (torrentManager != null)
+                    torrentManager.isInEndGame = true;
+            }
             return inEndgame;
         }
 
         public override void Reset()
         {
             inEndgame = false;
-			torrentManager.isInEndGame = false;
+            if (torrentManager != null)
+                torrentManager.isInEndGame = false;
             standard.Reset();
             endgame.Reset();
         }
