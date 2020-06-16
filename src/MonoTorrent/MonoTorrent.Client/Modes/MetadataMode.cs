@@ -44,6 +44,7 @@ namespace MonoTorrent.Client.Modes
 {
     class MetadataMode : Mode
     {
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
         BitField bitField;
         static readonly TimeSpan timeout = TimeSpan.FromSeconds (10);
         PeerId currentId;
@@ -171,18 +172,26 @@ namespace MonoTorrent.Client.Modes
 
                                 dict.Add ("announce-list", announceTrackers);
                             }
+
+                            dict.Add ("created by", new BEncodedString ("TorrentRT"));
+
+                            //HACK to prevent Torrent class from randomizing announce urls on load
+                            if (Manager.MagnetLink != null && Manager.MagnetLink.PreserveAnnounceUrlsOrder) {
+                                dict.Add ("comment", new BEncodedString ("PreserveAnnounceUrlsOrder"));
+                            }
+
                             if (Torrent.TryLoad (dict.Encode (), out Torrent t)) {
                                 Manager.RaiseMetadataReceived (t, dict);
                                 if (stopWhenDone)
                                     return;
-
                                 try {
-                                    if (Directory.Exists (savePath))
-                                        savePath = Path.Combine (savePath, $"{Manager.InfoHash.ToHex ()}.torrent");
-                                    File.Delete (savePath);
+                                    //if (File.Exists(savePath))
+                                    //    savePath = Path.Combine (savePath, Manager.InfoHash.ToHex() + ".torrent");
+                                    //if (Directory.Exists(savePath))
+                                    //    savePath = Path.Combine (savePath, Manager.InfoHash.ToHex() + ".torrent");
                                     File.WriteAllBytes (savePath, dict.Encode ());
                                 } catch (Exception ex) {
-                                    Logger.Log (null, "*METADATA EXCEPTION* - Can not write in {0} : {1}", savePath, ex);
+                                    logger.Error(ex, $"*METADATA EXCEPTION* - Can not write in {savePath}");
                                     Manager.TrySetError (Reason.WriteFailure, ex);
                                     return;
                                 }

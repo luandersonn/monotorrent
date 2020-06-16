@@ -13,10 +13,10 @@
 // distribute, sublicense, and/or sell copies of the Software, and to
 // permit persons to whom the Software is furnished to do so, subject to
 // the following conditions:
-//
+// 
 // The above copyright notice and this permission notice shall be
 // included in all copies or substantial portions of the Software.
-//
+// 
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 // EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 // MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -31,7 +31,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.IO;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Text;
@@ -52,6 +52,7 @@ namespace MonoTorrent.Client
     /// </summary>
     public class ClientEngine : IDisposable
     {
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
         internal static readonly MainLoop MainLoop = new MainLoop ("Client Engine Loop");
 
         /// <summary>
@@ -59,6 +60,7 @@ namespace MonoTorrent.Client
         /// random sequence when the application is restarted.
         /// </summary>
         static readonly Random PeerIdRandomGenerator = new Random ();
+
         #region Global Constants
 
         // This is the number of 16kB requests which can be queued against one peer.
@@ -80,6 +82,9 @@ namespace MonoTorrent.Client
 
         public event EventHandler<StatsUpdateEventArgs> StatsUpdate;
         public event EventHandler<CriticalExceptionEventArgs> CriticalException;
+
+        public event EventHandler<TorrentEventArgs> TorrentRegistered;
+        public event EventHandler<TorrentEventArgs> TorrentUnregistered;
 
         #endregion
 
@@ -104,6 +109,8 @@ namespace MonoTorrent.Client
         readonly RateLimiterGroup uploadLimiters;
         readonly RateLimiter downloadLimiter;
         readonly RateLimiterGroup downloadLimiters;
+        private IPieceWriter writer;
+        private DiskWriterLimiter diskWriterLimiter;
 
         #endregion
 
@@ -123,7 +130,6 @@ namespace MonoTorrent.Client
         /// engine will automatically forward ports using uPnP and/or NAT-PMP compatible routers.
         /// </summary>
         public bool PortForwardingEnabled => PortForwarder.Active;
-
         public IPeerListener Listener { get; }
 
         public ILocalPeerDiscovery LocalPeerDiscovery { get; private set; }
@@ -133,13 +139,11 @@ namespace MonoTorrent.Client
         /// of the ports the engine is managing.
         /// </summary>
         public Mappings PortMappings => PortForwardingEnabled ? PortForwarder.Mappings : Mappings.Empty;
-
         public bool IsRunning { get; private set; }
 
         public BEncodedString PeerId { get; }
 
         internal IPortForwarder PortForwarder { get; }
-
         public EngineSettings Settings { get; }
 
         public IList<TorrentManager> Torrents { get; }
@@ -162,16 +166,18 @@ namespace MonoTorrent.Client
             }
         }
 
+        public bool IsWriteBufferOverLimit
+        {
+            get
+            {
+                return !diskWriterLimiter.Unlimited;
+            }
+        }
+
         #endregion
 
 
         #region Constructors
-
-        public ClientEngine ()
-            : this(new EngineSettings ())
-        {
-
-        }
 
         public ClientEngine (EngineSettings settings)
             : this (settings, new DiskWriter ())
@@ -198,6 +204,8 @@ namespace MonoTorrent.Client
             Check.Listener (listener);
             Check.Writer (writer);
 
+            this.writer = writer;
+
             // This is just a sanity check to make sure the ReusableTasks.dll assembly is
             // loadable.
             GC.KeepAlive (ReusableTasks.ReusableTask.CompletedTask);
@@ -215,7 +223,6 @@ namespace MonoTorrent.Client
             DhtEngine = new NullDhtEngine ();
             listenManager = new ListenManager (this);
             PortForwarder = new MonoNatPortForwarder ();
-
             MainLoop.QueueTimeout (TimeSpan.FromMilliseconds (TickLength), delegate {
                 if (IsRunning && !Disposed)
                     LogicTick ();
@@ -223,8 +230,9 @@ namespace MonoTorrent.Client
             });
 
             downloadLimiter = new RateLimiter ();
+            diskWriterLimiter = new DiskWriterLimiter(DiskManager);
             downloadLimiters = new RateLimiterGroup {
-                new DiskWriterLimiter(DiskManager),
+                diskWriterLimiter,
                 downloadLimiter,
             };
 
@@ -332,6 +340,7 @@ namespace MonoTorrent.Client
                     // Add new peer to matched Torrent
                     var peer = new Peer ("", args.Uri);
                     int peersAdded = manager.AddPeer (peer, fromTrackers: false, prioritise: true) ? 1 : 0;
+                    logger.Info ($"Found {peersAdded} peers using local discovery");
                     manager.RaisePeersFound (new LocalPeersAdded (manager, peersAdded, 1));
                 }
             } catch {
@@ -381,6 +390,8 @@ namespace MonoTorrent.Client
                     // FIXME: Should log this somewhere, though it's not critical
                 }
             }
+
+            TorrentRegistered?.Invoke(this, new TorrentRegisteredEventArgs(manager));
         }
 
         public async Task RegisterDhtAsync (IDhtEngine engine)
@@ -431,6 +442,7 @@ namespace MonoTorrent.Client
 
             if (manager.CanUseDht) {
                 int successfullyAdded = await manager.AddPeersAsync (e.Peers);
+                logger.Info ($"Found {successfullyAdded} peers on DHT");
                 manager.RaisePeersFound (new DhtPeersAdded (manager, successfullyAdded, e.Peers.Count));
             } else {
                 // This is only used for unit testing to validate that even if the DHT engine
@@ -527,6 +539,16 @@ namespace MonoTorrent.Client
             manager.Engine = null;
             manager.DownloadLimiters.Remove (downloadLimiters);
             manager.UploadLimiters.Remove (uploadLimiters);
+            TorrentUnregistered?.Invoke(this, new TorrentRegisteredEventArgs(manager));
+        }
+
+        public async Task FlushAllAsync ()
+        {
+            var tasks = this.Torrents
+                .Where (manager => manager.Torrent != null)
+                .SelectMany (manager => manager.Torrent.Files)
+                .Select (file => writer.FlushAsync (file));
+            await Task.WhenAll (tasks);
         }
 
         #endregion
@@ -543,7 +565,9 @@ namespace MonoTorrent.Client
                 uploadLimiter.UpdateChunks (Settings.MaximumUploadSpeed, TotalUploadSpeed);
             }
 
-            ConnectionManager.CancelPendingConnects ();
+            for (int i = 0; i < this.allTorrents.Count; i++)
+                ConnectionManager.CancelPendingConnects(this.allTorrents[i]);
+
             ConnectionManager.TryConnect ();
             DiskManager.Tick ();
 

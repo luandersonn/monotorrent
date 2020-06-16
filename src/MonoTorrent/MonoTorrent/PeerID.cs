@@ -118,7 +118,8 @@ namespace MonoTorrent
         static readonly Regex mldonkey = new Regex ("-ML/d\\./d\\./d");
         static readonly Regex opera = new Regex ("OP/d{4}");
         static readonly Regex queenbee = new Regex ("Q/d-/d-/d--");
-        static readonly Regex standard = new Regex (@"-(([A-Za-z\~]{2})\d{4})-*");
+        static readonly Regex standard = new Regex (@"-(([A-Za-z\~]{2})\d{4})-.*");
+        static readonly Regex utorrent = new Regex (@"-(UT\d{3,4}\w?)-*");
         static readonly Regex shadows = new Regex (@"(([A-Za-z]{1})\d{3})----*");
         static readonly Regex xbt = new Regex ("XBT/d/{3}");
 
@@ -145,7 +146,7 @@ namespace MonoTorrent
         /// Initializes a new instance of the <see cref="Software"/> class.
         /// </summary>
         /// <param name="peerId">The peer id.</param>
-        internal Software (BEncodedString peerId)
+        public Software (BEncodedString peerId)
         {
             Match m;
 
@@ -311,7 +312,6 @@ namespace MonoTorrent
             #endregion
 
             #region Shadows Style
-
             if ((m = shadows.Match (idAsText)).Success) {
                 ShortId = m.Groups[1].Value;
                 Client = m.Groups[2].Value switch {
@@ -325,7 +325,14 @@ namespace MonoTorrent
                 };
                 return;
             }
+            #endregion
 
+            #region uTorrent
+            if ((m = utorrent.Match (idAsText)).Success) {
+                ShortId = "UT";
+                Client = ClientApp.uTorrent;
+                return;
+            }
             #endregion
 
             #region Brams Client

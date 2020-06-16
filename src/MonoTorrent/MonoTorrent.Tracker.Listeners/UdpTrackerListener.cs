@@ -43,6 +43,8 @@ namespace MonoTorrent.Tracker.Listeners
 {
     class UdpTrackerListener : TrackerListener, ISocketListener
     {
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
+
         public IPEndPoint EndPoint { get; private set; }
 
         IPEndPoint OriginalEndPoint { get; }
@@ -94,6 +96,7 @@ namespace MonoTorrent.Tracker.Listeners
                         }
                     }
 
+
                     sendTask = request.Action switch {
                         0 => ReceiveConnect (client, (ConnectMessage) request, result.RemoteEndPoint),
                         1 => ReceiveAnnounce (client, (AnnounceMessage) request, result.RemoteEndPoint),
@@ -102,7 +105,7 @@ namespace MonoTorrent.Tracker.Listeners
                         _ => throw new ProtocolException ($"Invalid udp message received: {request.Action}")
                     };
                 } catch (Exception e) {
-                    Logger.Log (null, e.ToString ());
+                    logger.Warn (e, "UtpTrackerListener ReceiveAsync error");
                 }
             }
         }

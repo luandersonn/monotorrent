@@ -38,6 +38,8 @@ namespace MonoTorrent.Streaming
 {
     class HttpStream : IUriStream
     {
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
+
         CancellationTokenSource Cancellation { get; }
 
         CancellationTokenSource CurrentContextCts { get; set; }
@@ -79,7 +81,7 @@ namespace MonoTorrent.Streaming
             while (!Cancellation.IsCancellationRequested) {
                 try {
                     var context = await listener.GetContextAsync ().ConfigureAwait (false);
-                    Debug.WriteLine ("Received HTTP request");
+                   logger.Info ("Received HTTP request");
                     CurrentContextCts?.Cancel ();
                     CurrentContextCts = new CancellationTokenSource ();
                     HandleMediaPlayerContext (context, CurrentContextCts.Token);
@@ -97,9 +99,9 @@ namespace MonoTorrent.Streaming
                     await HandleMediaPlayerContextAsync (context, token).ConfigureAwait (false);
             } catch (Exception ex) {
                 if (token.IsCancellationRequested)
-                    Debug.WriteLine ("HTTP request cancelled by client.");
+                    logger.Info ("HTTP request cancelled by client.");
                 else
-                    Debug.WriteLine ("HTTP request closed ungracefully - {0}", ex.Message);
+                    logger.Info ("HTTP request closed ungracefully - {0}", ex.Message);
             }
         }
 
@@ -110,7 +112,7 @@ namespace MonoTorrent.Streaming
 
             var range = context.Request.Headers["Range"];
             if (range != null && range.StartsWith ("bytes=")) {
-                Debug.WriteLine (string.Format ("Client requested: {0}", range));
+                logger.Info (string.Format ("Client requested: {0}", range));
                 var parts = range.Substring ("bytes=".Length).Split (new[] { '-' }, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 1) {
                     firstByte = long.Parse (parts[0]);
@@ -130,7 +132,7 @@ namespace MonoTorrent.Streaming
             context.Response.AppendHeader ("Content-Range", $"bytes {firstByte}-{lastByte}");
             context.Response.StatusCode = (int) HttpStatusCode.PartialContent;
             context.Response.ContentLength64 = lastByte - firstByte + 1;
-            Debug.WriteLine ($"Requested {firstByte} -> {lastByte}. Length: {context.Response.ContentLength64}");
+            logger.Info ($"Requested {firstByte} -> {lastByte}. Length: {context.Response.ContentLength64}");
             while (firstByte <= lastByte) {
                 // Read the data and stream it back to the media player.
                 try {
@@ -146,7 +148,7 @@ namespace MonoTorrent.Streaming
                     ReadLocker.Release ();
                 }
             }
-            Debug.WriteLine ("Successfully transferred {0} -> {1}. Length: {2}", firstByte, lastByte, context.Response.ContentLength64);
+            logger.Info ("Successfully transferred {0} -> {1}. Length: {2}", firstByte, lastByte, context.Response.ContentLength64);
         }
     }
 }

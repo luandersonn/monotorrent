@@ -38,6 +38,7 @@ namespace MonoTorrent
     abstract class UdpListener : SocketListener, ISocketMessageListener
     {
         public event Action<byte[], IPEndPoint> MessageReceived;
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
 
         UdpClient Client { get; set; }
 
@@ -52,7 +53,7 @@ namespace MonoTorrent
                 if (endpoint.Address != IPAddress.Any)
                     await Client.SendAsync (buffer, buffer.Length, endpoint).ConfigureAwait (false);
             } catch (Exception ex) {
-                Logger.Log (null, "UdpListener could not send message: {0}", ex);
+                logger.Info (ex, "UdpListener could not send message");
             }
         }
 

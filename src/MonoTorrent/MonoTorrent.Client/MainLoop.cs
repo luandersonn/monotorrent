@@ -61,11 +61,12 @@ namespace MonoTorrent.Client
         readonly ManualResetEventSlim actionsWaiter = new ManualResetEventSlim ();
         readonly Thread thread;
 
-        public MainLoop (string name)
+        public MainLoop (string name, ThreadPriority priority = ThreadPriority.Normal)
         {
             thread = new Thread (Loop) {
                 Name = name,
-                IsBackground = true
+                IsBackground = true,
+                Priority = priority
             };
             thread.Start ();
         }

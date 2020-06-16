@@ -41,7 +41,7 @@ namespace MonoTorrent.Dht
 
         bool Disposed { get; }
         DhtState State { get; }
-
+        int NodesCount { get; }
         void Add (BEncodedList nodes);
         void Announce (InfoHash infohash, int port);
         void GetPeers (InfoHash infohash);

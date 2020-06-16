@@ -105,7 +105,9 @@ namespace MonoTorrent
         Normal = 4,
         High = 8,
         Highest = 16,
-        Immediate = 32
+        Immediate = 32,
+        // hack to prevent monotorrent writing files to disk when files are removed
+        DoNotWriteToDisk = 128
     }
 
     public enum TorrentEvent

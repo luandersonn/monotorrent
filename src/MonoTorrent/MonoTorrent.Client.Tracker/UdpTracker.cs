@@ -64,6 +64,8 @@ namespace MonoTorrent.Client.Tracker
                 var message = new AnnounceMessage (DateTime.Now.GetHashCode (), connectionId, parameters);
                 var announce = (AnnounceResponseMessage) await SendAndReceiveAsync (message);
                 MinUpdateInterval = announce.Interval;
+                Complete = announce.Seeders;
+                Incomplete = announce.Leechers;
 
                 Status = TrackerState.Ok;
                 return announce.Peers;
@@ -108,6 +110,7 @@ namespace MonoTorrent.Client.Tracker
 
         async Task<long> ConnectAsync ()
         {
+            this.Status = TrackerState.Connecting;
             var message = new ConnectMessage ();
             // Reset the timer so we don't do two concurrent connect requests. It's just an optimisation
             // as concurrent requests are fine!
@@ -177,6 +180,11 @@ namespace MonoTorrent.Client.Tracker
                     return false;
                 }
             });
+        }
+
+        public override string ToString ()
+        {
+            return Uri.ToString ();
         }
     }
 }

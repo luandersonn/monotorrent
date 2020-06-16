@@ -41,6 +41,8 @@ namespace MonoTorrent.Dht
 {
     class MessageLoop
     {
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
+
         struct SendDetails
         {
             public SendDetails (Node node, IPEndPoint destination, DhtMessage message, TaskCompletionSource<SendQueryEventArgs> tcs)
@@ -126,8 +128,7 @@ namespace MonoTorrent.Dht
 
                     TimeoutMessage ();
                 } catch (Exception ex) {
-                    Debug.WriteLine ("Error in DHT main loop:");
-                    Debug.WriteLine (ex);
+                    logger.Error (ex, "Error in DHT main loop");
                 }
 
                 return !engine.Disposed;

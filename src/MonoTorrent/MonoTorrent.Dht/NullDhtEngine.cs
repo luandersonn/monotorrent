@@ -52,6 +52,8 @@ namespace MonoTorrent.Dht
 
         public DhtState State => DhtState.NotReady;
 
+        public int NodesCount => 0;
+
         public void Add (BEncodedList nodes)
         {
 

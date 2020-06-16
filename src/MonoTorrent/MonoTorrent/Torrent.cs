@@ -30,12 +30,14 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
 using MonoTorrent.BEncoding;
+
 
 namespace MonoTorrent
 {
@@ -259,6 +261,11 @@ namespace MonoTorrent
         {
             // Give the user a copy of the original dictionary.
             return BEncodedValue.Clone (originalDictionary);
+        }
+
+        public MagnetLink ToMagnetLink()
+        {
+            return new MagnetLink(this.InfoHash, name: this.Name, announceUrls: this.AnnounceUrls.SelectMany(tier => tier).ToList());
         }
 
         public override string ToString ()
@@ -555,7 +562,6 @@ namespace MonoTorrent
                 using var client = new WebClient ();
                 client.DownloadFile (url, location);
             } catch (Exception ex) {
-                File.Delete (location);
                 throw new TorrentException ("Could not download .torrent file from the specified url", ex);
             }
 
@@ -568,17 +574,9 @@ namespace MonoTorrent
         /// <param name="url">The URL to download the .torrent from</param>
         /// <param name="location">The path to download the .torrent to before it gets loaded</param>
         /// <returns></returns>
-        public static async Task<Torrent> LoadAsync (Uri url, string location)
+        public static Task<Torrent> LoadAsync (Uri url, string location)
         {
-            try {
-                using var client = new WebClient ();
-                await client.DownloadFileTaskAsync (url, location).ConfigureAwait (false);
-            } catch (Exception ex) {
-                File.Delete (location);
-                throw new TorrentException ("Could not download .torrent file from the specified url", ex);
-            }
-
-            return await LoadAsync (location).ConfigureAwait (false);
+            return Task.Run (() => Load (url, location));
         }
 
         /// <summary>
@@ -592,13 +590,10 @@ namespace MonoTorrent
         {
             Check.Path (path);
 
-            torrent = null;
             try {
-                if (!string.IsNullOrEmpty (path) && File.Exists (path))
-                    torrent = Load (path);
+                torrent = Load (path);
             } catch {
-                // We will return false if an exception is thrown as 'torrent' will still
-                // be null.
+                torrent = null;
             }
 
             return torrent != null;

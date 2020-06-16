@@ -30,11 +30,15 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace MonoTorrent.Client
 {
+    // Won't work for UWP, check one under MonoTorrent.UWP instead.
     class FileStreamBuffer : IDisposable
     {
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
+
         // A list of currently open filestreams. Note: The least recently used is at position 0
         // The most recently used is at the last position in the array
         readonly int maxStreams;
@@ -51,11 +55,11 @@ namespace MonoTorrent.Client
 
         void Add (TorrentFileStream stream)
         {
-            Logger.Log (null, "Opening filestream: {0}", stream.Path);
+            logger.Info ("Opening filestream: {0}", stream.Path);
 
             // If we have our maximum number of streams open, just dispose and dump the least recently used one
             if (maxStreams != 0 && Streams.Count >= Streams.Capacity) {
-                Logger.Log (null, "We've reached capacity: {0}", Streams.Count);
+                logger.Info ("We've reached capacity: {0}", Streams.Count);
                 CloseAndRemove (Streams[0]);
             }
             Streams.Add (stream);
@@ -69,14 +73,14 @@ namespace MonoTorrent.Client
             return null;
         }
 
-        internal TorrentFileStream GetStream (TorrentFile file, FileAccess access)
+        internal async Task<TorrentFileStream> GetStreamAsync(TorrentFile file, FileAccess access)
         {
             TorrentFileStream s = FindStream (file.FullPath);
 
             if (s != null) {
                 // If we are requesting write access and the current stream does not have it
                 if (((access & FileAccess.Write) == FileAccess.Write) && !s.CanWrite) {
-                    Logger.Log (null, "Didn't have write permission - reopening");
+                    logger.Info ("Didn't have write permission - reopening");
                     CloseAndRemove (s);
                     s = null;
                 } else {
@@ -91,13 +95,13 @@ namespace MonoTorrent.Client
                     Directory.CreateDirectory (Path.GetDirectoryName (file.FullPath));
                     NtfsSparseFile.CreateSparse (file.FullPath, file.Length);
                 }
-                s = new TorrentFileStream (file, FileMode.OpenOrCreate, access, FileShare.ReadWrite);
+                s = new TorrentFileStream (null, file, FileMode.OpenOrCreate, access, FileShare.Read); // won't work
 
                 // Ensure that we truncate existing files which are too large
                 if (s.Length > file.Length) {
                     if (!s.CanWrite) {
-                        s.Close ();
-                        s = new TorrentFileStream (file, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
+                        s.Close();
+                        s = new TorrentFileStream(null, file, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read); // won't work
                     }
                     s.SetLength (file.Length);
                 }
@@ -129,7 +133,7 @@ namespace MonoTorrent.Client
 
         void CloseAndRemove (TorrentFileStream s)
         {
-            Logger.Log (null, "Closing and removing: {0}", s.Path);
+            logger.Info ("Closing and removing: {0}", s.Path);
             Streams.Remove (s);
             s.Dispose ();
         }

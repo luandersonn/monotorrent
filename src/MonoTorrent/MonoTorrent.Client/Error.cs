@@ -34,7 +34,8 @@ namespace MonoTorrent.Client
     public enum Reason
     {
         ReadFailure,
-        WriteFailure
+        WriteFailure,
+        ReadHashFailure
     }
 
     public class Error

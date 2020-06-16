@@ -46,6 +46,8 @@ namespace MonoTorrent.Streaming
     /// </summary>
     class LocalStream : Stream
     {
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
+
         long position;
 
         public override bool CanRead => true;
@@ -135,7 +137,9 @@ namespace MonoTorrent.Streaming
             ThrowIfDisposed ();
 
             position += read;
+            var oldHighPriority = Picker.HighPriorityPieceIndex;
             Picker.ReadToPosition (File, position);
+            logger.Info ($"Read to {position}. HighPriorityPiece: {oldHighPriority} -> {Picker.HighPriorityPieceIndex}");
             return read;
         }
 
@@ -157,7 +161,9 @@ namespace MonoTorrent.Streaming
                     throw new NotSupportedException ();
             }
 
+            var oldHighPriority = Picker.HighPriorityPieceIndex;
             Picker.SeekToPosition (File, position);
+            logger.Info ($"Seek to {position}. HighPriorityPiece: {oldHighPriority} -> {Picker.HighPriorityPieceIndex}");
             Stream?.Seek (offset, origin);
             return position;
         }

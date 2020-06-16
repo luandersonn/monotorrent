@@ -34,6 +34,7 @@ namespace MonoTorrent.Client.PiecePicking
 {
     public class StandardPicker : PiecePicker
     {
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
         static readonly Predicate<Block> TimedOut = b => b.RequestTimedOut;
 
         readonly SortList<Piece> requests;
@@ -173,26 +174,26 @@ namespace MonoTorrent.Client.PiecePicking
 
             if (pIndex < 0) {
                 piece = null;
-                Logger.Log (null, "Validating: {0} - {1}: ", pieceIndex, startOffset);
-                Logger.Log (null, "No piece");
+                logger.Info("Validating: {0} - {1}: ", pieceIndex, startOffset);
+                logger.Info("No piece");
                 return false;
             }
             piece = requests[pIndex];
             // Pick out the block that this piece message belongs to
             int blockIndex = Block.IndexOf (piece.Blocks, startOffset, length);
             if (blockIndex == -1 || !peer.Equals (piece.Blocks[blockIndex].RequestedOff)) {
-                Logger.Log (null, "Validating: {0} - {1}: ", pieceIndex, startOffset);
-                Logger.Log (null, "no block");
+                logger.Info("Validating: {0} - {1}: ", pieceIndex, startOffset);
+                logger.Info("no block");
                 return false;
             }
             if (piece.Blocks[blockIndex].Received) {
-                Logger.Log (null, "Validating: {0} - {1}: ", pieceIndex, startOffset);
-                Logger.Log (null, "received");
+                logger.Info("Validating: {0} - {1}: ", pieceIndex, startOffset);
+                logger.Info("received");
                 return false;
             }
             if (!piece.Blocks[blockIndex].Requested) {
-                Logger.Log (null, "Validating: {0} - {1}: ", pieceIndex, startOffset);
-                Logger.Log (null, "not requested");
+                logger.Info("Validating: {0} - {1}: ", pieceIndex, startOffset);
+                logger.Info("not requested");
                 return false;
             }
             peer.AmRequestingPiecesCount--;
@@ -240,6 +241,9 @@ namespace MonoTorrent.Client.PiecePicking
                 // If the peer who this piece is assigned to is dodgy or if the blocks are all request or
                 // the peer doesn't have this piece, we don't want to help download the piece.
                 if (p.AllBlocksRequested || p.AllBlocksReceived || !peer.BitField[p.Index])
+                    // alekseyv - not sure why it matters if hash failed for some other peer
+                    //(p.Blocks[0].RequestedOff != null && p.Blocks[0].RequestedOff.RepeatedHashFails != 0)) 
+                    //(p.Blocks[0].RequestedOff != null))
                     continue;
 
                 for (int i = p.Blocks.Length - 1; i >= 0; i--)

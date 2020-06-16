@@ -261,6 +261,11 @@ namespace MonoTorrent.Client.Connections
             Socket = null;
         }
 
-#endregion
+        #endregion
+
+        public override string ToString ()
+        {
+            return this.Uri.ToString ();
+        }
     }
 }

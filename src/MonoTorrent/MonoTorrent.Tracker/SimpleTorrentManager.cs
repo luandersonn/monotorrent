@@ -41,6 +41,7 @@ namespace MonoTorrent.Tracker
     ///</summary>
     class SimpleTorrentManager : ITrackerItem
     {
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
 
         /// <summary>
         /// Used to check whether two <see cref="Peer"/> objects are the same.
@@ -114,7 +115,7 @@ namespace MonoTorrent.Tracker
             if (peer == null)
                 throw new ArgumentNullException (nameof (peer));
 
-            Debug.WriteLine ($"Adding: {peer.ClientAddress}");
+            logger.Info ($"Adding: {peer.ClientAddress}");
             Peers.Add (peer.DictionaryKey, peer);
             lock (PeersList)
                 PeersList.Clear ();
@@ -197,7 +198,7 @@ namespace MonoTorrent.Tracker
             if (peer == null)
                 throw new ArgumentNullException (nameof (peer));
 
-            Debug.WriteLine ($"Removing: {peer.ClientAddress}");
+            logger.Info ($"Removing: {peer.ClientAddress}");
             Peers.Remove (peer.DictionaryKey);
             lock (PeersList)
                 PeersList.Clear ();
@@ -230,7 +231,7 @@ namespace MonoTorrent.Tracker
                 peer = new Peer (par, peerKey);
                 Add (peer);
             } else {
-                Debug.WriteLine ($"Updating: {peer.ClientAddress} with key {peerKey}");
+                logger.Info ($"Updating: {peer.ClientAddress} with key {peerKey}");
                 peer.Update (par);
             }
             if (par.Event == TorrentEvent.Completed)

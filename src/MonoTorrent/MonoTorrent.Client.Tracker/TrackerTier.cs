@@ -34,6 +34,8 @@ namespace MonoTorrent.Client.Tracker
 {
     public class TrackerTier
     {
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
+
         public ITracker ActiveTracker => Trackers[ActiveTrackerIndex];
 
         internal int ActiveTrackerIndex { get; set; }
@@ -58,7 +60,7 @@ namespace MonoTorrent.Client.Tracker
             var trackerList = new List<ITracker> ();
             foreach (string trackerUrl in trackerUrls) {
                 if (!Uri.TryCreate (trackerUrl, UriKind.Absolute, out Uri result)) {
-                    Logger.Log (null, "TrackerTier - Invalid tracker Url specified: {0}", trackerUrl);
+                    logger.Info ("TrackerTier - Invalid tracker Url specified: {0}", trackerUrl);
                     continue;
                 }
 
@@ -66,7 +68,7 @@ namespace MonoTorrent.Client.Tracker
                 if (tracker != null) {
                     trackerList.Add (tracker);
                 } else {
-                    Logger.Log (null, "Unsupported protocol {0}", result);
+                    logger.Info ("Unsupported protocol {0}", result);
                 }
             }
 

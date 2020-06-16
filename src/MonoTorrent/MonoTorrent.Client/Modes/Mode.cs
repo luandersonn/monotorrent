@@ -29,6 +29,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -45,6 +46,8 @@ namespace MonoTorrent.Client.Modes
 {
     abstract class Mode
     {
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
+
         bool hashingPendingFiles;
         BitField PartialProgressUpdater;
 
@@ -153,7 +156,7 @@ namespace MonoTorrent.Client.Modes
         protected virtual void HandleHandshakeMessage (PeerId id, HandshakeMessage message)
         {
             if (!message.ProtocolString.Equals (VersionInfo.ProtocolStringV100)) {
-                Logger.Log (id.Connection, "HandShake.Handle - Invalid protocol in handshake: {0}", message.ProtocolString);
+                logger.Info (id.Connection, $"HandShake.Handle - Invalid protocol in handshake: {message.ProtocolString}");
                 throw new ProtocolException ("Invalid protocol string");
             }
 
@@ -164,7 +167,7 @@ namespace MonoTorrent.Client.Modes
 
             // If the infohash doesn't match, dump the connection
             if (message.InfoHash != Manager.InfoHash) {
-                Logger.Log (id.Connection, "HandShake.Handle - Invalid infohash");
+                logger.Info (id.Connection, "HandShake.Handle - Invalid infohash");
                 throw new TorrentException ("Invalid infohash. Not tracking this torrent");
             }
 
@@ -175,7 +178,7 @@ namespace MonoTorrent.Client.Modes
                     // match we should close the connection. I *think* uTorrent doesn't randomise peerids
                     // for private torrents. It's not documented very well. We may need to relax this check
                     // if other clients randomize for private torrents.
-                    Logger.Log (id.Connection, "HandShake.Handle - Invalid peerid");
+                    logger.Info (id.Connection, "HandShake.Handle - Invalid peerid");
                     throw new TorrentException ("Supplied PeerID didn't match the one the tracker gave us");
                 } else {
                     // We don't care about the mismatch for public torrents. uTorrent randomizes its PeerId, as do other clients.
@@ -208,6 +211,7 @@ namespace MonoTorrent.Client.Modes
                     newPeers[i].IsSeeder = (message.AddedDotF[i] & 0x2) == 0x2;
                 }
                 int count = await Manager.AddPeersAsync (newPeers);
+                logger.Info ($"Found {count} peers using peer exchange");
                 Manager.RaisePeersFound (new PeerExchangePeersAdded (Manager, count, newPeers.Count, id));
             }
         }
@@ -314,7 +318,7 @@ namespace MonoTorrent.Client.Modes
             if (message.MaxRequests > 0)
                 id.MaxSupportedPendingRequests = message.MaxRequests;
             else
-                Logger.Log (id.Connection, "Invalid value for libtorrent extension handshake 'MaxRequests'.");
+                logger.Info (id.Connection, "Invalid value for libtorrent extension handshake 'MaxRequests'.");
 
             // Bugfix for MonoTorrent older than 1.0.19
             if (id.ClientApp.Client == ClientApp.MonoTorrent)
@@ -378,13 +382,19 @@ namespace MonoTorrent.Client.Modes
                 hash = await DiskManager.GetHashAsync (Manager.Torrent, piece.Index);
                 if (Cancellation.IsCancellationRequested)
                     return;
-            } catch (Exception ex) {
-                Manager.TrySetError (Reason.ReadFailure, ex);
+            } catch (System.IO.IOException ex) { // it can throw hash invalid exception, which looks like a normal case
+                // TODO:alekseyv - mark piece.Index as invalid and continue
+                //Debugger.Launch();
+                Manager.TrySetError (Reason.ReadHashFailure, ex);
                 return;
             }
 
             bool result = hash != null && Manager.Torrent.Pieces.IsValid (hash, piece.Index);
             Manager.OnPieceHashed (piece.Index, result, 1, 1);
+            // alekseyv - I'm not getting this line at all.
+            // Manager.PieceManager is marking UnhashedPieces[index] = true fully downloaded and hash-checked pieces.
+            // This code means that we might request piece again ????
+            // Shouldn't it be executed only if hash check fails????
             Manager.PieceManager.PendingHashCheckPieces[piece.Index] = false;
             if (!result)
                 Manager.HashFails++;
@@ -616,7 +626,7 @@ namespace MonoTorrent.Client.Modes
                     var uri = new Uri (seedUri);
                     var peer = new Peer (peerId, uri);
 
-                    var connection = (HttpConnection) ConnectionFactory.Create (uri);
+                    var connection = (HttpConnection) ConnectionFactory.Create (uri, Settings.EnabledProtocolType);
                     // Unsupported connection type.
                     if (connection == null)
                         continue;
@@ -690,8 +700,15 @@ namespace MonoTorrent.Client.Modes
                     // If the start piece *and* end piece have been hashed, then every piece in between must've been hashed!
                     if (file.Priority != Priority.DoNotDownload && (Manager.UnhashedPieces[file.StartPieceIndex] || Manager.UnhashedPieces[file.EndPieceIndex])) {
                         for (int index = file.StartPieceIndex; index <= file.EndPieceIndex; index++) {
-                            if (Manager.UnhashedPieces[index]) {
-                                byte[] hash = await DiskManager.GetHashAsync (Manager.Torrent, index);
+                            if (Manager.UnhashedPieces[index]) { //TODO(alekseyv): fix this
+                                byte[] hash = null;
+                                try {
+                                    hash = await DiskManager.GetHashAsync (Manager.Torrent, index);
+                                } catch (Exception ex) { // it can throw hash invalid exception, which looks like a normal case
+                                    // TODO(alekseyv): Make sure that DiskManager.GetHashAsync won't throw exception one hash fail, and remove try/catches
+                                    //Debugger.Launch ();
+                                    hash = null;
+                                }
                                 Cancellation.Token.ThrowIfCancellationRequested ();
 
                                 bool hashPassed = hash != null && Manager.Torrent.Pieces.IsValid (hash, index);

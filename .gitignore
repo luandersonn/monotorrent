@@ -8,6 +8,8 @@
 /src/MonoTorrent.Dht/obj/
 /src/MonoTorrent.Tests/bin/
 /src/MonoTorrent.Tests/obj/
+/src/MonoTorrent.UWP/bin/
+/src/MonoTorrent.UWP/obj/
 /src/MonoTorrent/bin/
 /src/MonoTorrent/obj/
 /src/SampleClient/bin/

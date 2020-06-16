@@ -29,6 +29,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using MonoTorrent.Client.Messages.Standard;
 using MonoTorrent.Client.PiecePicking;
@@ -84,6 +85,11 @@ namespace MonoTorrent.Client.Messages
                 written += Messages[i].Encode (buffer, written);
 
             return CheckWritten (written - offset);
+        }
+
+        public override string ToString()
+        {
+            return $"MessageBundle [{String.Join(", ", this.Messages.Select(m => m.ToString()).ToArray())}]";
         }
     }
 }

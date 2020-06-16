@@ -75,10 +75,14 @@ namespace MonoTorrent.Client.Tracker
         /// </summary>
         public IList<TrackerTier> Tiers { get; }
 
+        public IList<ITracker> Trackers { get; private set; }
+
         /// <summary>
         /// The amount of time since the most recent Announce request was issued.
         /// </summary>
         public TimeSpan TimeSinceLastAnnounce => CurrentTier?.TimeSinceLastAnnounce ?? TimeSpan.Zero;
+
+        public DateTime? NextUpdate => throw new NotImplementedException ();
 
         #endregion
 
@@ -96,10 +100,15 @@ namespace MonoTorrent.Client.Tracker
 
             // Check if this tracker supports scraping
             var trackerTiers = new List<TrackerTier> ();
-            foreach (RawTrackerTier tier in announces)
-                trackerTiers.Add (new TrackerTier (tier));
+            List<ITracker> trackers = new List<ITracker> ();
+            foreach (var tier in announces) {
+                TrackerTier trackerTier = new TrackerTier (tier);
+                trackerTiers.Add (trackerTier);
+                trackers.AddRange (trackerTier.Trackers);
+            }
             trackerTiers.RemoveAll (tier => tier.Trackers.Count == 0);
             Tiers = trackerTiers.AsReadOnly ();
+            Trackers = trackers;
         }
 
         #endregion

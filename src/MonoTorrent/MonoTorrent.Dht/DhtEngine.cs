@@ -78,6 +78,11 @@ namespace MonoTorrent.Dht
         internal TokenManager TokenManager { get; }
         internal Dictionary<NodeId, List<Node>> Torrents { get; }
 
+        public int NodesCount
+        {
+            get { return RoutingTable.CountNodes(); }
+        }
+
         #endregion Properties
 
         #region Constructors

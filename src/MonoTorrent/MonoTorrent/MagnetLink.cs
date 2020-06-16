@@ -70,6 +70,12 @@ namespace MonoTorrent
             get;
         }
 
+        //HACK to prevent Torrent class from randomizing announce urls on load
+        public bool PreserveAnnounceUrlsOrder {
+            get;
+            set;
+        }
+
         public MagnetLink (InfoHash infoHash, string name = null, IList<string> announceUrls = null, IEnumerable<string> webSeeds = null, long? size = null)
         {
             InfoHash = infoHash ?? throw new ArgumentNullException (nameof (infoHash));
@@ -192,7 +198,14 @@ namespace MonoTorrent
                 sb.Append (webseed.UrlEncodeUTF8 ());
             }
 
+            sb.Append ("&xc=TorrentRTSearch");
+
             return sb.ToString ();
+        }
+
+        public override string ToString ()
+        {
+            return ConvertToString();
         }
     }
 }

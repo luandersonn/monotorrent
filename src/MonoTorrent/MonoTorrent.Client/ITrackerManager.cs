@@ -101,6 +101,10 @@ namespace MonoTorrent.Client.Tracker
         /// </summary>
         /// <param name="tracker">The tracker to query</param>
         /// <returns></returns>
-        Task Scrape (ITracker tracker);
+        Task Scrape(ITracker tracker);
+
+        IList<ITracker> Trackers { get; }
+
+        DateTime? NextUpdate { get;  }
     }
 }

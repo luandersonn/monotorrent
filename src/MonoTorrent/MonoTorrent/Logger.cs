@@ -38,69 +38,15 @@ namespace MonoTorrent
 {
     static class Logger
     {
-        static readonly List<TraceListener> listeners;
 
-        static Logger ()
+        public static void Info(this NLog.Logger logger, IConnection connection, string message)
         {
-            listeners = new List<TraceListener> ();
+            logger.Info (connection.ToString () + " : " + message);
         }
 
-        public static void AddListener (TraceListener listener)
+        public static void Debug (this NLog.Logger logger, IConnection connection, string message)
         {
-            if (listener == null)
-                throw new ArgumentNullException (nameof (listener));
-
-            lock (listeners)
-                listeners.Add (listener);
-        }
-
-        public static void Flush ()
-        {
-            lock (listeners)
-                listeners.ForEach (delegate (TraceListener l) { l.Flush (); });
-        }
-        /*
-        internal static void Log(PeerIdInternal id, string message)
-        {
-            Log(id.PublicId, message);
-        }
-
-        internal static void Log(PeerId id, string message)
-        {
-            lock (listeners)
-                for (int i = 0; i < listeners.Count; i++)
-                    listeners[i].WriteLine(id.GetHashCode().ToString() + ": " + message);
-        }
-
-        internal static void Log(string p)
-        {
-            lock (listeners)
-                for (int i = 0; i < listeners.Count; i++)
-                    listeners[i].WriteLine(p);
-        }*/
-
-        [Conditional ("DO_NOT_ENABLE")]
-        internal static void Log (IConnection connection, string message)
-        {
-            Log (connection, message, null);
-        }
-
-        static readonly StringBuilder sb = new StringBuilder ();
-        [Conditional ("DO_NOT_ENABLE")]
-        internal static void Log (IConnection connection, string message, params object[] formatting)
-        {
-            lock (listeners) {
-                sb.Remove (0, sb.Length);
-                sb.Append (Environment.TickCount);
-                sb.Append (": ");
-
-                if (connection != null)
-                    sb.Append (connection.EndPoint);
-
-                sb.Append (formatting != null ? string.Format (message, formatting) : message);
-                string s = sb.ToString ();
-                listeners.ForEach (delegate (TraceListener l) { l.WriteLine (s); });
-            }
+            logger.Debug (connection.ToString () + " : " + message);
         }
     }
 }

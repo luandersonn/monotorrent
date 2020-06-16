@@ -32,17 +32,23 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Linq;
 using MonoTorrent.BEncoding;
+
 using MonoTorrent.Client.Messages.Standard;
 using MonoTorrent.Client.Modes;
 using MonoTorrent.Client.PiecePicking;
 using MonoTorrent.Client.RateLimiters;
 using MonoTorrent.Client.Tracker;
+using ReusableTasks;
+using System.Diagnostics;
 
 namespace MonoTorrent.Client
 {
     public class TorrentManager : IDisposable, IEquatable<TorrentManager>
     {
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
+
         #region Events
 
         internal event EventHandler<(Torrent torrent, byte[] dict)> MetadataReceived;
@@ -102,6 +108,7 @@ namespace MonoTorrent.Client
         readonly string torrentSave;             // The path where the .torrent data will be saved when in metadata mode
         internal IUnchoker chokeUnchoker; // Used to choke and unchoke peers
         internal DateTime lastCalledInactivePeerManager = DateTime.Now;
+        private MagnetLink magnetLink;
         #endregion Member Variables
 
 
@@ -284,6 +291,79 @@ namespace MonoTorrent.Client
 
         public InfoHash InfoHash { get; }
 
+        /// <summary>
+        /// If TorrentState is Stopped and this value is not null it means that torrent is queued.
+        /// The higher the value, the lower download priority is.
+        /// Used only in GUI.
+        /// TODO(alekseyv): move it out
+        /// </summary>
+        public int? QueuedPriority
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// Indicates that torrent should switch to stopped mode once download is complete.
+        /// Used only in GUI.
+        /// </summary>
+        /// TODO(alekseyv): move it out
+        public bool StopOnComplete
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// Torrent tracker announce Urls
+        /// </summary>
+        public IList<RawTrackerTier> AnnounceUrls
+        {
+            get;
+            private set;
+        }
+
+        //for HACK to prevent Torrent class from randomizing announce urls on load
+        /// <summary>
+        /// Magnet link
+        /// </summary>
+        public MagnetLink MagnetLink {
+            get {
+                if (this.magnetLink == null) {
+                    this.magnetLink = new MagnetLink (Torrent.InfoHash, name: Name,
+                        announceUrls: AnnounceUrls != null ? AnnounceUrls.SelectMany (rawTrackerTier => rawTrackerTier).ToList () : new List<string> ());
+                }
+                return this.magnetLink;
+            }
+        }
+
+        /// <summary>
+        /// Torrent name
+        /// </summary>
+        public string Name
+        {
+            get
+            {
+                if (this.Torrent != null)
+                {
+                    return this.Torrent.Name;
+                }
+
+                if (this.magnetLink != null)
+                {
+                    return this.magnetLink.Name;
+                }
+
+                return null;
+            }
+        }
+
+        public int DhtPeersCount
+        {
+            get;
+            private set;
+        }
+
         #endregion
 
         #region Constructors
@@ -363,6 +443,7 @@ namespace MonoTorrent.Client
 
             InfoHash = magnetLink.InfoHash;
             Settings = settings;
+            this.magnetLink = magnetLink;
             this.torrentSave = torrentSave;
             IList<RawTrackerTier> announces = new RawTrackerTiers ();
             if (magnetLink.AnnounceUrls != null)
@@ -376,6 +457,7 @@ namespace MonoTorrent.Client
 
         void Initialise (string savePath, string baseDirectory, IList<RawTrackerTier> announces)
         {
+            this.AnnounceUrls = announces;
             Bitfield = new BitField (HasMetadata ? Torrent.Pieces.Count : 1);
             PartialProgressSelector = new BitField (HasMetadata ? Torrent.Pieces.Count : 1);
             UnhashedPieces = new BitField (HasMetadata ? Torrent.Pieces.Count : 1).SetAll (true);
@@ -418,7 +500,7 @@ namespace MonoTorrent.Client
 
         #region Public Methods
 
-        internal void ChangePicker (PiecePicker picker)
+        public void ChangePicker (PiecePicker picker)
         {
             Check.Picker (picker);
             IEnumerable<Piece> pieces = PieceManager.Picker?.ExportActiveRequests () ?? new List<Piece> ();
@@ -529,7 +611,7 @@ namespace MonoTorrent.Client
             } catch (OperationCanceledException) {
                 return;
             } catch (Exception ex) {
-                TrySetError (Reason.ReadFailure, ex);
+                TrySetError (Reason.ReadHashFailure, ex);
                 return;
             }
 
@@ -767,6 +849,12 @@ namespace MonoTorrent.Client
 
         internal void RaisePeersFound (PeersAddedEventArgs args)
         {
+            DhtPeersAdded dhtPeersAdded = args as DhtPeersAdded;
+            if (dhtPeersAdded != null)
+            {
+                // This doesn't account for peer disconnection, but should be good enough.
+                DhtPeersCount += dhtPeersAdded.NewPeers;
+            }
             PeersFound?.InvokeAsync (this, args);
         }
 
@@ -778,6 +866,12 @@ namespace MonoTorrent.Client
             Bitfield[index] = hashPassed;
             // The PiecePickers will no longer ignore this piece as it has now been hash checked.
             UnhashedPieces[index] = false;
+
+            // alekseyv - tried following logic, looks like original works better
+            //if (!hashPassed) {
+            //    this.PieceManager.UnhashedPieces[index] = false;
+            //}
+            //UnhashedPieces[index] = !hashPassed;
 
             // This gives us the index of *one* of the files we need to update. We need to search up
             // and down the array for other matching files as multiple files can share a piece.
@@ -858,6 +952,20 @@ namespace MonoTorrent.Client
             return picker;
         }
 
+        public SlidingWindowPicker CreateSlidingWindowPicker (int streamStart, int size)
+        {
+            PiecePicker picker = new StandardPicker ();
+            if (ClientEngine.SupportsEndgameMode)
+                picker = new EndGameSwitcher (picker, new EndGamePicker (), this);
+            picker = new PriorityPicker (picker);
+
+            SlidingWindowPicker slidingWindowPicker = new SlidingWindowPicker (picker) {
+                HighPrioritySetStart = streamStart,
+                HighPrioritySetSize = size
+            };
+            return slidingWindowPicker;
+        }
+
         public void LoadFastResume (FastResume data)
         {
             Check.Data (data);
@@ -901,6 +1009,7 @@ namespace MonoTorrent.Client
                 await ClientEngine.MainLoop;
 
                 int count = AddPeers (e.Peers, true);
+                logger.Info ($"Found {count} peers on tracker {e.Tracker.Uri}");
                 RaisePeersFound (new TrackerPeersAdded (this, count, e.Peers.Count, e.Tracker));
             }
         }
@@ -909,6 +1018,8 @@ namespace MonoTorrent.Client
 
         internal bool TrySetError (Reason reason, Exception ex)
         {
+            logger.Error (ex, "Error occured in TorrentManager");
+
             if (Mode is ErrorMode)
                 return false;
 

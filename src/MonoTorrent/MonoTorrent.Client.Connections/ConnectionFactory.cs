@@ -34,51 +34,52 @@ namespace MonoTorrent.Client.Connections
 {
     public static class ConnectionFactory
     {
-        static readonly object locker = new object ();
-        static readonly Dictionary<string, Func<Uri, IConnection>> trackerTypes = new Dictionary<string, Func<Uri, IConnection>> ();
-
-        static ConnectionFactory ()
+        static ConnectionFactory()
         {
-            RegisterTypeForProtocol ("ipv4", uri => new IPV4Connection (uri));
-            RegisterTypeForProtocol ("ipv6", uri => new IPV6Connection (uri));
-            RegisterTypeForProtocol ("http", uri => new HttpConnection (uri));
-            RegisterTypeForProtocol ("https", uri => new HttpConnection (uri));
         }
 
-        public static void RegisterTypeForProtocol (string protocol, Type connectionType)
+        private static IConnection2 GetOriginalIpV4ProtocolConnection (Uri connectionUri, EnabledProtocolTypes enabledProtocolType)
         {
-            if (string.IsNullOrEmpty (protocol))
-                throw new ArgumentException ("cannot be null or empty", nameof (protocol));
-            if (connectionType == null)
-                throw new ArgumentNullException (nameof (connectionType));
-
-            RegisterTypeForProtocol (protocol, uri => (IConnection) Activator.CreateInstance (connectionType, uri));
+            switch (enabledProtocolType) {
+                case EnabledProtocolTypes.TCP:
+                case EnabledProtocolTypes.TCPtoUTP:
+                    return new IPV4Connection (connectionUri);
+                case EnabledProtocolTypes.UTP:
+                case EnabledProtocolTypes.UTPtoTCP:
+                    return new UTPConnection (connectionUri);
+                default:
+                    throw new ArgumentException ("unsupported value: " + enabledProtocolType);
+            }
         }
 
-        static void RegisterTypeForProtocol (string protocol, Func<Uri, IConnection> creator)
+        public static IConnection2 GetFallbackProtocolConnection(Uri connectionUri, ProtocolTypes currentProtocolType, EnabledProtocolTypes enabledProtocolTypes)
         {
-            lock (locker)
-                trackerTypes[protocol] = creator;
+            if (currentProtocolType == ProtocolTypes.TCP && enabledProtocolTypes == EnabledProtocolTypes.TCPtoUTP) {
+                return new UTPConnection (connectionUri);
+            }
+            else if (currentProtocolType == ProtocolTypes.uTP && enabledProtocolTypes == EnabledProtocolTypes.UTPtoTCP) {
+                return new IPV4Connection (connectionUri);
+            }
+
+            return null;
         }
 
-
-        public static IConnection Create (Uri connectionUri)
+        public static IConnection Create(Uri connectionUri, EnabledProtocolTypes enabledProtocolType)
         {
             if (connectionUri == null)
-                throw new ArgumentNullException (nameof (connectionUri));
+                throw new ArgumentNullException(nameof (connectionUri));
 
             if (connectionUri.Scheme == "ipv4" && connectionUri.Port == -1)
                 return null;
 
-            Func<Uri, IConnection> creator;
-            lock (locker)
-                if (!trackerTypes.TryGetValue (connectionUri.Scheme, out creator))
-                    return null;
-
-            try {
-                return creator (connectionUri);
-            } catch {
-                return null;
+            switch (connectionUri.Scheme)
+            {
+                //case "ipv4": return new AutoProtocolSelectConnection(connectionUri, enabledProtocolType);
+               //case "ipv4": return new IPV4Connection(connectionUri);
+                case "ipv4": return GetOriginalIpV4ProtocolConnection (connectionUri, enabledProtocolType);
+                case "ipv6": return new IPV6Connection(connectionUri);
+                case "http": return new HttpConnection(connectionUri);
+                default: return null;
             }
         }
     }

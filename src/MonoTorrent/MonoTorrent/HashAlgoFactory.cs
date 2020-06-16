@@ -38,34 +38,23 @@ namespace MonoTorrent
     [EditorBrowsable (EditorBrowsableState.Never)]
     public static class HashAlgoFactory
     {
-        static readonly Dictionary<Type, Type> algos = new Dictionary<Type, Type> ();
+        // See https://gist.github.com/mairaw/c5ea693b956b584f44c3423e29e1f0c6
 
-        static HashAlgoFactory ()
-        {
-            Register<MD5, MD5CryptoServiceProvider> ();
-            Register<SHA1, SHA1CryptoServiceProvider> ();
-        }
-
-        public static void Register<T, U> ()
-            where T : HashAlgorithm
-            where U : HashAlgorithm
-        {
-            Register (typeof (T), typeof (U));
-        }
-
-        public static void Register (Type baseType, Type specificType)
-        {
-            Check.BaseType (baseType);
-            Check.SpecificType (specificType);
-
-            lock (algos)
-                algos[baseType] = specificType;
-        }
+        public static Func<HashAlgorithm> SHA1Builder = () => SHA1.Create ();
+        public static Func<HashAlgorithm> MD5Builder = () => MD5.Create ();
 
         public static T Create<T> ()
             where T : HashAlgorithm
         {
-            return (T) Activator.CreateInstance (algos[typeof (T)]);
+            if (typeof(T) == typeof(SHA1)) {
+                return (T) SHA1Builder ();
+            }
+
+            if (typeof (T) == typeof (MD5)) {
+                return (T) MD5Builder ();
+            }
+
+            throw new NotSupportedException ($"{typeof (T)} hash algorithm is not supported");
         }
     }
 }

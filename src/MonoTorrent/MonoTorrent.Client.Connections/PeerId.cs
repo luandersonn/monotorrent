@@ -95,6 +95,25 @@ namespace MonoTorrent.Client
         internal long BytesDownloadedAtLastReview { get; set; } = 0;
         internal long BytesUploadedAtLastReview { get; set; } = 0;
         internal IConnection2 Connection { get; }
+
+        public ProtocolTypes ProtocolType {
+            get
+            {
+                if (Connection == null) {
+                    return ProtocolTypes.Undefined;
+                } else if (Connection is IPV4Connection) {
+                    return ProtocolTypes.TCP;
+                } else if (Connection is IPV6Connection) {
+                    return ProtocolTypes.TCPv6;
+                } else if (Connection is UTPConnection) {
+                    return ProtocolTypes.uTP;
+                } else if (Connection is HttpConnection) {
+                    return ProtocolTypes.HTTP;
+                } else {
+                    return ProtocolTypes.Undefined;
+                }
+            }
+        }
         internal double LastReviewDownloadRate { get; set; } = 0;
         internal double LastReviewUploadRate { get; set; } = 0;
         internal bool FirstReviewPeriod { get; set; }
@@ -239,6 +258,11 @@ namespace MonoTorrent.Client
         public override string ToString ()
         {
             return Peer.ConnectionUri.ToString ();
+        }
+
+        public string ToDebugString ()
+        {
+            return $"PeerId: {Peer.PeerId.ToString()} ConnectionUrl:{Peer.ConnectionUri} AllowedEncryptionTypes:{this.Peer.AllowedEncryption} Encryption:{this.EncryptionType} Protocol: {this.ProtocolType}";
         }
 
         #endregion

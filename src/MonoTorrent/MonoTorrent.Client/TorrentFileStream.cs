@@ -27,21 +27,80 @@
 //
 
 
+using System.Diagnostics;
 using System.IO;
+using System.Threading;
 
 namespace MonoTorrent.Client
 {
-    class TorrentFileStream : FileStream
+    public class TorrentFileStream : Stream
     {
-        public TorrentFile File { get; }
+        protected readonly TorrentFile file;
+        protected readonly Stream stream;
 
-        public string Path => File.FullPath;
+        public TorrentFile File {
+            get { return file; }
+        }
 
+        public string Path {
+            get { return file.FullPath; }
+        }
 
-        public TorrentFileStream (TorrentFile file, FileMode mode, FileAccess access, FileShare share)
-            : base (file.FullPath, mode, access, share, 1)
+        public override bool CanRead => stream.CanRead;
+
+        public override bool CanSeek => stream.CanSeek;
+
+        public override bool CanWrite => stream.CanWrite;
+
+        public override long Length => stream.Length;
+
+        public override long Position { get => stream.Position; set => stream.Position = value; }
+
+        public override void Close()
         {
-            File = file;
+            stream.Close();
+        }
+
+        public override void Flush ()
+        {
+            stream.Flush ();
+        }
+
+        public override int Read (byte[] buffer, int offset, int count)
+        {
+            return stream.Read (buffer, offset, count);
+        }
+
+        public override long Seek (long offset, SeekOrigin origin)
+        {
+            try {
+                return Retry.Do (() => stream.Seek (offset, origin), System.TimeSpan.FromMilliseconds (50), throwLast: true);
+            }
+            catch(System.IO.IOException ex) {
+                //Debugger.Launch ();
+                throw;
+            }            
+        }
+
+        public override void SetLength (long value)
+        {
+            stream.SetLength (value);
+        }
+
+        public override void Write (byte[] buffer, int offset, int count)
+        {
+            stream.Write (buffer, offset, count);
+        }
+
+        public new void Dispose()
+        {
+            stream.Dispose ();
+        }
+
+        public TorrentFileStream(Stream stream, TorrentFile file, FileMode mode, FileAccess access, FileShare share)
+        {
+            this.stream = stream;
+            this.file = file;
         }
     }
 }

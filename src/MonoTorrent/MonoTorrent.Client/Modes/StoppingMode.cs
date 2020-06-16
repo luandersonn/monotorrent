@@ -29,6 +29,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -38,6 +39,7 @@ namespace MonoTorrent.Client.Modes
 {
     class StoppingMode : Mode
     {
+        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger ();
         public override bool CanAcceptConnections => false;
         public override bool CanHandleMessages => false;
         public override bool CanHashCheck => false;
@@ -57,32 +59,34 @@ namespace MonoTorrent.Client.Modes
         {
             try {
                 Manager.Engine.ConnectionManager.CancelPendingConnects (Manager);
-                foreach (PeerId id in Manager.Peers.ConnectedPeers.ToArray ())
+                foreach (PeerId id in Manager.Peers.ConnectedPeers.ToArray ().AsParallel())
                     Manager.Engine.ConnectionManager.CleanupSocket (Manager, id);
 
+                // Trying to make stopping faster.
+                //var cleanupSocketsTask = Manager.Peers.ConnectedPeers.ToArray().Select(id => Manager.Engine.ConnectionManager.CleanupSocket(Manager, id));
+                //await Task.WhenAll(cleanupSocketsTask);
+
                 Manager.Monitor.Reset ();
+                Manager.Peers.ClearAll ();
                 Manager.PieceManager.Reset ();
                 Manager.finishedPieces.Clear ();
 
-                var stoppingTasks = new List<Task> ();
-                // We could be in metadata download mode
-                if (Manager.Torrent != null)
-                    stoppingTasks.Add (Manager.Engine.DiskManager.CloseFilesAsync (Manager.Torrent));
+                var stoppingTasks = new List<Task> {
+                    Manager.Engine.DiskManager.CloseFilesAsync (Manager.Torrent)
+                };
 
                 Task announceTask = Manager.TrackerManager.Announce (TorrentEvent.Stopped);
-                if (timeout != Timeout.InfiniteTimeSpan)
-                    announceTask = Task.WhenAny (announceTask, Task.Delay (timeout));
-                stoppingTasks.Add (announceTask);
+                // Do not wait for announce to complete, it might take a while for torrents that have a lot of trackers.
+                //if (timeout != Timeout.InfiniteTimeSpan)
+                //    announceTask = Task.WhenAny (announceTask, Task.Delay (timeout));
+                //stoppingTasks.Add (announceTask);
 
-                // FIXME: Expose CancellationToken throughout this API.
-                var delayTask = Task.Delay (TimeSpan.FromMinutes (1), Cancellation.Token);
+                var delayTask = Task.Delay (TimeSpan.FromSeconds (30), Cancellation.Token);
                 var overallTasks = Task.WhenAll (stoppingTasks);
                 if (await Task.WhenAny (overallTasks, delayTask) == delayTask)
-                    Logger.Log (null, "Timed out waiting for the announce request to complete");
-                else
-                    await overallTasks;
+                    logger.Info ("Timed out waiting for the announce request to complete");
             } catch (Exception ex) {
-                Logger.Log (null, "Unexpected exception stopping a TorrentManager: {0}", ex);
+                logger.Error (ex, $"Unexpected exception stopping a TorrentManager: {Manager.Name}");
             }
         }
     }
